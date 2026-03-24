@@ -208,7 +208,7 @@ window.CleanClaw = {
     sidebar.style.display = 'none';
     topNav.style.display = 'none';
     bottomTabs.style.display = 'none';
-    if (mobileHeader) mobileHeader.style.display = 'none';
+    if (mobileHeader) mobileHeader.classList.add('cc-hidden');
     const globalSearch = document.getElementById('global-search');
     if (globalSearch) globalSearch.style.display = 'none';
 
@@ -276,7 +276,7 @@ window.CleanClaw = {
     const contentArea = document.getElementById('content-area');
 
     sidebar.style.display = 'flex';
-    if (mobileHeader) mobileHeader.style.display = 'flex';
+    if (mobileHeader) mobileHeader.classList.remove('cc-hidden');
     contentArea.classList.add('cc-content--with-sidebar');
 
     // Business name

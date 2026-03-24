@@ -3017,3 +3017,4 @@ body:has(.cc-sidebar.collapsed) .cc-content--with-sidebar {
 @keyframes cc-spin {
   to { transform: rotate(360deg); }
 }
+.cc-hidden { display: none \!important; }
