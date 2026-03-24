@@ -268,3 +268,111 @@ async def run_migrations(key: str = ""):
         tables = [r['tablename'] for r in final]
     
     return {"results": results, "tables": tables}
+
+
+@app.get("/admin/seed", tags=["Admin"], include_in_schema=False)
+async def run_seed(key: str = ""):
+    """One-time seed endpoint. Requires SECRET_KEY as query param."""
+    secret = os.getenv("SECRET_KEY", "")
+    if not key or key != secret:
+        return {"error": "unauthorized"}
+    
+    from app.database import get_db_pool
+    pool = await get_db_pool()
+    if not pool:
+        return {"error": "no database connection"}
+    
+    import uuid
+    OWNER_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "cleanneworleans.owner")
+    BUSINESS_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "cleanneworleans.business")
+    
+    results = []
+    async with pool.acquire() as conn:
+        # Check if already seeded
+        exists = await conn.fetchval("SELECT id FROM businesses WHERE slug = 'clean-new-orleans'")
+        if exists:
+            # Get stats
+            clients = await conn.fetchval("SELECT count(*) FROM cleaning_clients WHERE business_id = $1", exists)
+            teams = await conn.fetchval("SELECT count(*) FROM cleaning_teams WHERE business_id = $1", exists)
+            services = await conn.fetchval("SELECT count(*) FROM cleaning_services WHERE business_id = $1", exists)
+            return {"status": "already_seeded", "business_id": str(exists), "clients": clients, "teams": teams, "services": services}
+        
+        try:
+            # Create owner user
+            owner_exists = await conn.fetchval("SELECT id FROM users WHERE email = 'admin@cleanneworleans.com'")
+            if not owner_exists:
+                from app.security import hash_password
+                hashed = hash_password("admin123")
+                await conn.execute(
+                    "INSERT INTO users (id, email, password_hash, name, is_active) VALUES ($1, $2, $3, $4, true)",
+                    OWNER_ID, "admin@cleanneworleans.com", hashed, "Clean NOLA Admin"
+                )
+                results.append("OK: created owner user")
+            else:
+                OWNER_ID_ACTUAL = owner_exists
+                results.append(f"SKIP: owner user exists ({owner_exists})")
+            
+            owner_id = owner_exists or OWNER_ID
+            
+            # Create business
+            await conn.execute("""
+                INSERT INTO businesses (id, name, slug, owner_id, business_type, timezone, is_active, settings)
+                VALUES ($1, $2, 'clean-new-orleans', $3, 'cleaning', 'America/Chicago', true, $4::jsonb)
+            """, BUSINESS_ID, "Clean New Orleans", owner_id, '{"currency":"USD","language":"en","tax_rate":0.0,"business_hours":{"start":"07:00","end":"18:00"}}')
+            results.append("OK: created business")
+            
+            # Owner role
+            await conn.execute("""
+                INSERT INTO cleaning_user_roles (id, user_id, business_id, role)
+                VALUES ($1, $2, $3, 'owner')
+                ON CONFLICT DO NOTHING
+            """, uuid.uuid4(), owner_id, BUSINESS_ID)
+            results.append("OK: owner role assigned")
+            
+            # Copy service templates -> services
+            templates = await conn.fetch("SELECT * FROM cleaning_service_templates")
+            for t in templates:
+                await conn.execute("""
+                    INSERT INTO cleaning_services (id, business_id, name, slug, description, duration_minutes,
+                        base_price, category, is_active)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+                    ON CONFLICT DO NOTHING
+                """, uuid.uuid4(), BUSINESS_ID, t['name'], t['slug'], t.get('description',''),
+                    t['duration_minutes'], t['base_price'], t.get('category', 'residential'))
+            results.append(f"OK: {len(templates)} services copied from templates")
+            
+            # Create teams
+            teams_data = [
+                ("Team Alpha", "#4CAF50"), ("Team Beta", "#2196F3"), ("Team Gamma", "#FF9800")
+            ]
+            for tname, color in teams_data:
+                await conn.execute("""
+                    INSERT INTO cleaning_teams (id, business_id, name, color, is_active)
+                    VALUES ($1, $2, $3, $4, true) ON CONFLICT DO NOTHING
+                """, uuid.uuid4(), BUSINESS_ID, tname, color)
+            results.append("OK: 3 teams created")
+            
+            # Service areas
+            areas = [
+                ("French Quarter / CBD", ["70112","70116","70130"]),
+                ("Uptown / Garden District", ["70115","70118","70130"]),
+                ("Mid-City / Gentilly", ["70119","70122","70125"]),
+                ("Lakeview / Metairie", ["70124","70001","70002"]),
+                ("Bywater / Marigny", ["70117","70116"]),
+                ("Algiers / West Bank", ["70114","70131"]),
+                ("New Orleans East", ["70126","70127","70128"]),
+                ("Kenner / River Ridge", ["70062","70065","70123"]),
+            ]
+            for aname, zips in areas:
+                await conn.execute("""
+                    INSERT INTO cleaning_areas (id, business_id, name, zip_codes, city, is_active)
+                    VALUES ($1, $2, $3, $4, 'New Orleans', true) ON CONFLICT DO NOTHING
+                """, uuid.uuid4(), BUSINESS_ID, aname, zips)
+            results.append(f"OK: {len(areas)} service areas created")
+            
+            results.append("SEED COMPLETE")
+            
+        except Exception as e:
+            results.append(f"ERROR: {str(e)[:200]}")
+    
+    return {"results": results, "business_id": str(BUSINESS_ID)}
