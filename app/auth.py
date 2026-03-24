@@ -512,14 +512,14 @@ async def google_callback(
 ):
     """Google OAuth callback"""
     if error:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error={error}")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error={error}")
 
     if not code or not state:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=missing_params")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=missing_params")
 
     state_data = await _pop_oauth_state(state)
     if not state_data:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=invalid_state")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=invalid_state")
 
     ref_code = state_data.get("ref_code")
 
@@ -537,7 +537,7 @@ async def google_callback(
             )
 
             if token_response.status_code != 200:
-                return RedirectResponse(url=f"{APP_URL}/business-admin?error=token_exchange_failed")
+                return RedirectResponse(url=f"{APP_URL}/dashboard?error=token_exchange_failed")
 
             tokens = token_response.json()
             access_token = tokens.get("access_token")
@@ -548,7 +548,7 @@ async def google_callback(
             )
 
             if user_response.status_code != 200:
-                return RedirectResponse(url=f"{APP_URL}/business-admin?error=user_info_failed")
+                return RedirectResponse(url=f"{APP_URL}/dashboard?error=user_info_failed")
 
             user_info = user_response.json()
 
@@ -558,7 +558,7 @@ async def google_callback(
         picture = user_info.get("picture")
 
         if not email:
-            return RedirectResponse(url=f"{APP_URL}/business-admin?error=no_email")
+            return RedirectResponse(url=f"{APP_URL}/dashboard?error=no_email")
 
         user = await db.get_user_by_email(email)
 
@@ -604,12 +604,12 @@ async def google_callback(
             details={"provider": "google"}
         )
 
-        redirect_url = f"{APP_URL}/business-admin?access_token={jwt_access}&refresh_token={jwt_refresh}"
+        redirect_url = f"{APP_URL}/dashboard?access_token={jwt_access}&refresh_token={jwt_refresh}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
         logger.error(f"[AUTH] Google OAuth error: {e}")
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=oauth_failed")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=oauth_failed")
 
 
 # ============================================
@@ -648,14 +648,14 @@ async def github_callback(
 ):
     """GitHub OAuth callback"""
     if error:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error={error}")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error={error}")
 
     if not code or not state:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=missing_params")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=missing_params")
 
     state_data = await _pop_oauth_state(state)
     if not state_data:
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=invalid_state")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=invalid_state")
 
     ref_code = state_data.get("ref_code")
 
@@ -674,13 +674,13 @@ async def github_callback(
             )
 
             if token_response.status_code != 200:
-                return RedirectResponse(url=f"{APP_URL}/business-admin?error=token_exchange_failed")
+                return RedirectResponse(url=f"{APP_URL}/dashboard?error=token_exchange_failed")
 
             tokens = token_response.json()
             access_token = tokens.get("access_token")
 
             if not access_token:
-                return RedirectResponse(url=f"{APP_URL}/business-admin?error=no_access_token")
+                return RedirectResponse(url=f"{APP_URL}/dashboard?error=no_access_token")
 
             # Fetch user info
             user_response = await client.get(
@@ -692,7 +692,7 @@ async def github_callback(
             )
 
             if user_response.status_code != 200:
-                return RedirectResponse(url=f"{APP_URL}/business-admin?error=user_info_failed")
+                return RedirectResponse(url=f"{APP_URL}/dashboard?error=user_info_failed")
 
             user_info = user_response.json()
 
@@ -713,7 +713,7 @@ async def github_callback(
                         email = primary["email"]
 
         if not email:
-            return RedirectResponse(url=f"{APP_URL}/business-admin?error=no_email")
+            return RedirectResponse(url=f"{APP_URL}/dashboard?error=no_email")
 
         nome = user_info.get("name") or user_info.get("login")
         github_id = str(user_info.get("id"))
@@ -761,12 +761,12 @@ async def github_callback(
             details={"provider": "github"}
         )
 
-        redirect_url = f"{APP_URL}/business-admin?access_token={jwt_access}&refresh_token={jwt_refresh}"
+        redirect_url = f"{APP_URL}/dashboard?access_token={jwt_access}&refresh_token={jwt_refresh}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
         logger.error(f"[AUTH] GitHub OAuth error: {e}")
-        return RedirectResponse(url=f"{APP_URL}/business-admin?error=oauth_failed")
+        return RedirectResponse(url=f"{APP_URL}/dashboard?error=oauth_failed")
 
 
 # ============================================
