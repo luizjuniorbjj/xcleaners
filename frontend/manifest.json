@@ -1,6 +1,6 @@
 {
-  "name": "CleanClaw",
-  "short_name": "CleanClaw",
+  "name": "xCleaners",
+  "short_name": "xCleaners",
   "description": "Cleaning Business Management",
   "start_url": "/cleaning/app#/login",
   "display": "standalone",

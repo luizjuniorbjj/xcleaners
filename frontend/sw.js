@@ -10,7 +10,7 @@
  *   - CDN libs: Cache First
  */
 
-const CACHE_VERSION = 'cleanclaw-v8';
+const CACHE_VERSION = 'xcleaners-v9';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;
@@ -44,7 +44,7 @@ const CLEANER_CACHE_PATTERNS = [
 // ----- Install -----
 
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing CleanClaw service worker');
+  console.log('[SW] Installing xCleaners service worker');
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) => {
       return cache.addAll(SHELL_ASSETS).catch((err) => {
@@ -58,12 +58,12 @@ self.addEventListener('install', (event) => {
 // ----- Activate -----
 
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating CleanClaw service worker');
+  console.log('[SW] Activating xCleaners service worker');
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((key) => key.startsWith('cleanclaw-') && key !== SHELL_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE)
+          .filter((key) => key.startsWith('xcleaners-') && key !== SHELL_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE)
           .map((key) => caches.delete(key))
       );
     })
@@ -180,7 +180,7 @@ function offlineFallback() {
     if (cached) return cached;
     return new Response(
       '<html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#374151;">' +
-      '<div style="text-align:center;"><h1>Offline</h1><p>CleanClaw is not available offline right now.</p><p>Please check your connection and try again.</p></div>' +
+      '<div style="text-align:center;"><h1>Offline</h1><p>xCleaners is not available offline right now.</p><p>Please check your connection and try again.</p></div>' +
       '</body></html>',
       { headers: { 'Content-Type': 'text/html' } }
     );
@@ -190,7 +190,7 @@ function offlineFallback() {
 // ----- Push Notifications -----
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'CleanClaw', body: 'You have a new notification' };
+  let data = { title: 'xCleaners', body: 'You have a new notification' };
   if (event.data) {
     try {
       data = event.data.json();
@@ -209,7 +209,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'CleanClaw', options)
+    self.registration.showNotification(data.title || 'xCleaners', options)
   );
 });
 

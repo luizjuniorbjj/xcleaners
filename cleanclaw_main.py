@@ -72,7 +72,7 @@ DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown for CleanClaw service."""
-    logger.info("\n  CleanClaw API v1.0.0")
+    logger.info("\n  xCleaners API v1.0.0")
     logger.info("=" * 40)
 
     # Database — graceful fallback for UI testing without DB
@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[REDIS] Not available: {e}")
 
-    logger.info("[OK] CleanClaw API ready")
+    logger.info("[OK] xCleaners API ready")
     logger.info("=" * 40)
     logger.info(f"  http://localhost:{CLEANCLAW_PORT}")
     logger.info(f"  http://localhost:{CLEANCLAW_PORT}/docs")
@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
 
     await close_redis()
     await close_db()
-    logger.info("[SHUTDOWN] CleanClaw stopped")
+    logger.info("[SHUTDOWN] xCleaners stopped")
 
 
 # ============================================
@@ -109,8 +109,8 @@ async def lifespan(app: FastAPI):
 # ============================================
 
 app = FastAPI(
-    title="CleanClaw API",
-    description="Standalone API for CleanClaw — cleaning business management PWA",
+    title="xCleaners API",
+    description="Standalone API for xCleaners — cleaning business management PWA",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs" if DEBUG else None,
@@ -158,7 +158,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health", tags=["Status"])
 async def health():
-    return {"status": "ok", "service": "cleanclaw"}
+    return {"status": "ok", "service": "xcleaners"}
 
 
 @app.get("/", tags=["Root"], include_in_schema=False)

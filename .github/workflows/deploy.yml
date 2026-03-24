@@ -1,4 +1,4 @@
-name: CleanClaw Deploy
+name: xCleaners Deploy
 
 on:
   push:
