@@ -21,7 +21,6 @@ window.OwnerDashboard = {
     const _hour = new Date().getHours();
     const _greeting = _hour < 12 ? 'Good morning' : _hour < 18 ? 'Good afternoon' : 'Good evening';
     const _userName = CleanClaw._user?.name || CleanClaw._user?.nome || 'Admin';
-    const _timeIcon = _hour < 6 ? '\u{1F319}' : _hour < 12 ? '\u{2600}\u{FE0F}' : _hour < 18 ? '\u{1F324}\u{FE0F}' : '\u{1F319}';
 
     container.innerHTML = `
       <div class="cc-animate-fade-in" style="display:flex;flex-direction:column;gap:var(--cc-space-6);">
@@ -34,17 +33,12 @@ window.OwnerDashboard = {
         </div>
 
         <!-- Greeting Card -->
-        <div class="cc-card" id="greeting-card" style="background:linear-gradient(135deg, var(--cc-primary-500), var(--cc-primary-700));color:#fff;padding:var(--cc-space-6);display:flex;align-items:center;justify-content:space-between;border-radius:var(--cc-radius-xl);margin-bottom:var(--cc-space-4);">
-          <div>
-            <div style="font-size:var(--cc-text-2xl);font-weight:var(--cc-font-bold);margin-bottom:var(--cc-space-2);">
-              ${_greeting}, ${_userName}!
-            </div>
-            <div style="opacity:0.85;font-size:var(--cc-text-sm);" id="greeting-summary">
-              Loading today's summary...
-            </div>
+        <div class="cc-card" id="greeting-card" style="background:linear-gradient(135deg, var(--cc-primary-500), var(--cc-primary-700));color:#fff;padding:var(--cc-space-6);border-radius:var(--cc-radius-xl);margin-bottom:var(--cc-space-4);">
+          <div style="font-size:var(--cc-text-2xl);font-weight:var(--cc-font-bold);margin-bottom:var(--cc-space-2);">
+            ${_greeting}, ${_userName}!
           </div>
-          <div style="font-size:3rem;opacity:0.3;">
-            ${_timeIcon}
+          <div style="opacity:0.85;font-size:var(--cc-text-sm);" id="greeting-summary">
+            Loading today's summary...
           </div>
         </div>
 
