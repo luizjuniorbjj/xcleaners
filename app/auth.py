@@ -234,7 +234,7 @@ async def register(request: RegisterRequest, background_tasks: BackgroundTasks, 
     password_hash = hash_password(request.password)
     user = await db.create_user(
         email=request.email,
-        password_hash=password_hash,
+        senha_hash=password_hash,
         nome=request.nome,
         ref_code=request.ref_code
     )
@@ -441,7 +441,7 @@ async def dev_login(request: DevLoginRequest, db: Database = Depends(get_db)):
         role = "admin" if email in ADMIN_EMAILS else "lead"
         user = await db.create_user(
             email=email,
-            password_hash=hash_password("dev-only-password"),
+            senha_hash=hash_password("dev-only-password"),
             nome=email.split("@")[0],
         )
         await db.create_user_profile(
@@ -571,7 +571,7 @@ async def google_callback(
             # New user — register via OAuth
             user = await db.create_user(
                 email=email,
-                password_hash=None,
+                senha_hash=None,
                 nome=nome,
                 oauth_provider="google",
                 oauth_id=google_id,
@@ -728,7 +728,7 @@ async def github_callback(
         else:
             user = await db.create_user(
                 email=email,
-                password_hash=None,
+                senha_hash=None,
                 nome=nome,
                 oauth_provider="github",
                 oauth_id=github_id,
