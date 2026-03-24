@@ -10,7 +10,7 @@
  *   - CDN libs: Cache First
  */
 
-const CACHE_VERSION = 'xcleaners-v15';
+const CACHE_VERSION = 'xcleaners-v16';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;

@@ -12,10 +12,10 @@ window.AuthUI = {
   renderLogin(container) {
     container.innerHTML = `
       <div class="cc-auth-backdrop">
-        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-8);">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
           <!-- Brand -->
-          <div style="text-align:center;margin-bottom:var(--cc-space-8);">
-            <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:var(--cc-radius-xl);background:var(--cc-primary-50);margin-bottom:var(--cc-space-3);">
+          <div style="text-align:center;margin-bottom:var(--cc-space-5);">
+            
             </div>
             <h2 class="cc-text-2xl" style="color:var(--cc-primary-500);margin-bottom:var(--cc-space-1);">CleanClaw</h2>
             <p class="cc-text-sm cc-text-muted">Smart Cleaning Management</p>
@@ -93,10 +93,10 @@ window.AuthUI = {
 
     container.innerHTML = `
       <div class="cc-auth-backdrop">
-        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-8);">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
           <!-- Brand -->
           <div style="text-align:center;margin-bottom:var(--cc-space-6);">
-            <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:var(--cc-radius-xl);background:var(--cc-primary-50);margin-bottom:var(--cc-space-3);">
+            
             </div>
             <h2 class="cc-text-2xl" style="color:var(--cc-primary-500);margin-bottom:var(--cc-space-1);">CleanClaw</h2>
           </div>

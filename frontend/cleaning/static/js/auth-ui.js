@@ -12,12 +12,11 @@ window.AuthUI = {
   renderLogin(container) {
     container.innerHTML = `
       <div class="cc-auth-backdrop">
-        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-8);">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
           <!-- Brand -->
-          <div style="text-align:center;margin-bottom:var(--cc-space-8);">
-            <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:var(--cc-radius-xl);background:var(--cc-primary-50);margin-bottom:var(--cc-space-3);">
-            </div>
-            <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:220px;max-width:70vw;margin-bottom:var(--cc-space-4);display:block;margin-left:auto;margin-right:auto;">
+          <div style="text-align:center;margin-bottom:var(--cc-space-5);">
+            
+            <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:200px;max-width:65vw;margin-bottom:var(--cc-space-3);display:block;margin-left:auto;margin-right:auto;">
             <p class="cc-text-sm cc-text-muted">Smart Cleaning Management</p>
           </div>
 
@@ -93,12 +92,11 @@ window.AuthUI = {
 
     container.innerHTML = `
       <div class="cc-auth-backdrop">
-        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-8);">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
           <!-- Brand -->
           <div style="text-align:center;margin-bottom:var(--cc-space-6);">
-            <div style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:var(--cc-radius-xl);background:var(--cc-primary-50);margin-bottom:var(--cc-space-3);">
-            </div>
-            <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:220px;max-width:70vw;margin-bottom:var(--cc-space-4);display:block;margin-left:auto;margin-right:auto;">
+            
+            <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:200px;max-width:65vw;margin-bottom:var(--cc-space-3);display:block;margin-left:auto;margin-right:auto;">
           </div>
 
           ${isInvite ? `
