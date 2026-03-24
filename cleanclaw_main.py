@@ -208,6 +208,15 @@ if _cleaning_dir.exists():
     async def serve_cleaning_app_legacy(path: str = ""):
         return FileResponse(str(_cleaning_dir / "app.html"))
 
+    # PWA assets — explicit routes so they don't hit the SPA catch-all
+    @app.get("/cleaning/manifest.json", tags=["Frontend"], include_in_schema=False)
+    async def serve_manifest():
+        return FileResponse(str(_cleaning_dir / "manifest.json"), media_type="application/json")
+
+    @app.get("/cleaning/sw.js", tags=["Frontend"], include_in_schema=False)
+    async def serve_sw():
+        return FileResponse(str(_cleaning_dir / "sw.js"), media_type="application/javascript")
+
     # SPA catch-all: serve app.html for all non-API, non-static paths
     # This MUST be the last route registered
     @app.get("/{path:path}", tags=["Frontend"], include_in_schema=False)

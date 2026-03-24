@@ -863,6 +863,14 @@ body:has(.cc-sidebar.collapsed) .cc-content--with-sidebar {
     display: none !important;
   }
 
+  /* When hamburger is visible (owner mobile), offset content so title doesn't overlap */
+  .cc-mobile-hamburger[style*="display: block"] ~ #content-area .cc-content-view h1,
+  .cc-mobile-hamburger[style*="display: block"] ~ #content-area .cc-content-view h2,
+  .cc-main-layout:has(.cc-mobile-hamburger[style*="display: block"]) .cc-content-view h1,
+  .cc-main-layout:has(.cc-mobile-hamburger[style*="display: block"]) .cc-content-view h2 {
+    padding-left: 48px;
+  }
+
   /* Content takes full width */
   .cc-content--with-sidebar {
     margin-left: 0;

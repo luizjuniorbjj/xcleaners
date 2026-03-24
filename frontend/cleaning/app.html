@@ -11,16 +11,6 @@
   <meta name="robots" content="noindex, nofollow">
 
   <title>Xcleaners</title>
-  <!-- Force clear stale service workers on load -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
-      });
-      caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-    }
-  </script>
-
   <link rel="manifest" href="/cleaning/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/cleaning/static/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/cleaning/static/icons/icon-192.png">
