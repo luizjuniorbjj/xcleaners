@@ -217,12 +217,25 @@ if _cleaning_dir.exists():
     async def serve_sw():
         return FileResponse(str(_cleaning_dir / "sw.js"), media_type="application/javascript")
 
+    # Temporary DB diagnostic
+    @app.get("/admin/db-check", tags=["Admin"], include_in_schema=False)
+    async def db_check_inline(key: str = ""):
+        secret = os.getenv("SECRET_KEY", "")
+        if not key or key != secret:
+            return {"error": "unauthorized"}
+        from app.database import get_db_pool
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            cols = await conn.fetch("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position")
+            users = await conn.fetch("SELECT id, email FROM users LIMIT 3")
+            return {"columns": [r["column_name"] for r in cols], "user_count": len(users)}
+
     # SPA catch-all: serve app.html for all non-API, non-static paths
     # This MUST be the last route registered
     @app.get("/{path:path}", tags=["Frontend"], include_in_schema=False)
     async def serve_spa_catchall(request: Request, path: str = ""):
         # Skip API and static paths
-        if path.startswith("api/") or path.startswith("cleaning/static") or path.startswith("docs") or path.startswith("openapi") or path.startswith("admin/"):
+        if path.startswith("api/") or path.startswith("cleaning/static") or path.startswith("docs") or path.startswith("openapi"):
             from fastapi.responses import JSONResponse
             return JSONResponse({"error": "not found"}, status_code=404)
         return FileResponse(str(_cleaning_dir / "app.html"))
