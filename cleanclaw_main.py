@@ -240,3 +240,19 @@ if __name__ == "__main__":
         port=CLEANCLAW_PORT,
         reload=DEBUG,
     )
+
+
+@app.get("/admin/db-check", tags=["Admin"], include_in_schema=False)
+async def db_check(key: str = ""):
+    secret = os.getenv("SECRET_KEY", "")
+    if not key or key != secret:
+        return {"error": "unauthorized"}
+    from app.database import get_db_pool
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        cols = await conn.fetch("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position")
+        users = await conn.fetch("SELECT id, email, nome FROM users LIMIT 3")
+        return {
+            "columns": [{"name": r["column_name"], "type": r["data_type"]} for r in cols],
+            "users": [dict(r) for r in users]
+        }
