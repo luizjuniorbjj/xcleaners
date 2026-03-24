@@ -44,7 +44,7 @@ const CLEANER_CACHE_PATTERNS = [
 // ----- Install -----
 
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing xCleaners service worker');
+  console.log('[SW] Installing Xcleaners service worker');
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) => {
       return cache.addAll(SHELL_ASSETS).catch((err) => {
@@ -58,7 +58,7 @@ self.addEventListener('install', (event) => {
 // ----- Activate -----
 
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating xCleaners service worker');
+  console.log('[SW] Activating Xcleaners service worker');
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
@@ -180,7 +180,7 @@ function offlineFallback() {
     if (cached) return cached;
     return new Response(
       '<html><body style="font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#374151;">' +
-      '<div style="text-align:center;"><h1>Offline</h1><p>xCleaners is not available offline right now.</p><p>Please check your connection and try again.</p></div>' +
+      '<div style="text-align:center;"><h1>Offline</h1><p>Xcleaners is not available offline right now.</p><p>Please check your connection and try again.</p></div>' +
       '</body></html>',
       { headers: { 'Content-Type': 'text/html' } }
     );
@@ -190,7 +190,7 @@ function offlineFallback() {
 // ----- Push Notifications -----
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'xCleaners', body: 'You have a new notification' };
+  let data = { title: 'Xcleaners', body: 'You have a new notification' };
   if (event.data) {
     try {
       data = event.data.json();
@@ -209,7 +209,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'xCleaners', options)
+    self.registration.showNotification(data.title || 'Xcleaners', options)
   );
 });
 

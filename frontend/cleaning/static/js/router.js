@@ -1,5 +1,5 @@
 /**
- * xCleaners Router - History API with clean URLs
+ * Xcleaners Router - History API with clean URLs
  */
 window.CleanRouter = {
   _routes: {
@@ -116,7 +116,7 @@ window.CleanRouter = {
     if(typeof CleanClaw!=='undefined'&&CleanClaw.showContentSkeleton)CleanClaw.showContentSkeleton();
     else{cl.style.display='flex';cv.innerHTML='';}
     this._updateNavActive();
-    document.title=route.title+' \u2014 xCleaners';
+    document.title=route.title+' \u2014 Xcleaners';
     try{
       if(!this._loadedModules[route.module]){await this._loadScript('/cleaning/static/js/'+route.module+'?v=10');this._loadedModules[route.module]=true;}
       const mn=this._getModuleName(route.module);

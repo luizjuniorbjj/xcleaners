@@ -1,6 +1,6 @@
 {
-  "name": "xCleaners",
-  "short_name": "xCleaners",
+  "name": "Xcleaners",
+  "short_name": "Xcleaners",
   "description": "Cleaning Business Management",
   "start_url": "/login",
   "display": "standalone",

@@ -258,7 +258,7 @@ window.CleanClaw = {
           <circle cx="24" cy="24" r="20" stroke="var(--cc-primary-500)" stroke-width="3"/>
           <path d="M16 24l5 5 11-11" stroke="var(--cc-primary-500)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span style="font-weight:700;color:var(--cc-primary-500);">xCleaners Admin</span>
+        <span style="font-weight:700;color:var(--cc-primary-500);">Xcleaners Admin</span>
       `;
     }
 
@@ -423,7 +423,7 @@ window.CleanClaw = {
             <circle cx="24" cy="24" r="22" stroke="#3B82F6" stroke-width="3"/>
             <path d="M16 24l5 5 11-11" stroke="#3B82F6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <h1>xCleaners</h1>
+          <h1>Xcleaners</h1>
         </div>
         <h2 class="cc-auth-heading">No cleaning business found</h2>
         <p style="text-align:center;color:var(--cc-neutral-500);margin-bottom:24px;">
