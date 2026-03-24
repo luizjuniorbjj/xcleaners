@@ -234,8 +234,8 @@ async def run_migrations(key: str = ""):
     if not key or key != secret:
         return {"error": "unauthorized"}
     
-    from app.database import get_pool
-    pool = get_pool()
+    from app.database import get_db_pool
+    pool = await get_db_pool()
     if not pool:
         return {"error": "no database connection"}
     
