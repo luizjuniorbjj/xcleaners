@@ -330,7 +330,7 @@ window.OwnerInvoiceManager = {
       <tr style="cursor:pointer;" data-id="${inv.id}">
         <td><input type="checkbox" class="cc-inv-check" data-id="${inv.id}" onclick="event.stopPropagation();" /></td>
         <td class="cc-font-medium">${inv.invoice_number || '--'}</td>
-        <td>${inv.client_name || '--'}</td>
+        <td>${this._esc(inv.client_name) || '--'}</td>
         <td class="cc-text-right cc-font-medium">${fmt(inv.total)}</td>
         <td>${statusBadge(inv.status)}</td>
         <td>${inv.due_date || '--'}${inv.days_overdue ? ` <span class="cc-text-danger cc-text-xs">(${inv.days_overdue}d)</span>` : ''}</td>
@@ -459,7 +459,7 @@ window.OwnerInvoiceManager = {
 
       const itemsHtml = (inv.items || []).map(item => `
         <tr>
-          <td class="cc-text-sm">${item.description}</td>
+          <td class="cc-text-sm">${this._esc(item.description)}</td>
           <td class="cc-text-right cc-text-sm">${item.quantity}</td>
           <td class="cc-text-right cc-text-sm">${fmt(item.unit_price)}</td>
           <td class="cc-text-right cc-text-sm cc-font-medium">${fmt(item.total)}</td>
@@ -478,14 +478,14 @@ window.OwnerInvoiceManager = {
           <div style="flex:1;padding:var(--cc-space-5);overflow-y:auto;display:flex;flex-direction:column;gap:var(--cc-space-4);">
             <!-- Meta -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--cc-space-3);">
-              <div class="cc-text-sm"><span class="cc-text-muted">Client:</span> <strong>${inv.client_name || '--'}</strong></div>
+              <div class="cc-text-sm"><span class="cc-text-muted">Client:</span> <strong>${this._esc(inv.client_name) || '--'}</strong></div>
               <div class="cc-text-sm"><span class="cc-text-muted">Status:</span> <span class="cc-badge cc-badge-sm ${statusMap[inv.status] || 'cc-badge-neutral'}">${inv.status}</span></div>
               <div class="cc-text-sm"><span class="cc-text-muted">Issued:</span> ${inv.issue_date}</div>
               <div class="cc-text-sm"><span class="cc-text-muted">Due:</span> ${inv.due_date}</div>
               <div class="cc-text-sm"><span class="cc-text-muted">Total:</span> <strong>${fmt(inv.total)}</strong></div>
               <div class="cc-text-sm"><span class="cc-text-muted">Paid:</span> ${fmt(inv.amount_paid)}</div>
               <div class="cc-text-sm"><span class="cc-text-muted">Balance:</span> <strong class="${inv.balance_due > 0 ? 'cc-text-danger' : ''}">${fmt(inv.balance_due)}</strong></div>
-              ${inv.payment_method ? `<div class="cc-text-sm"><span class="cc-text-muted">Method:</span> ${inv.payment_method}</div>` : ''}
+              ${inv.payment_method ? `<div class="cc-text-sm"><span class="cc-text-muted">Method:</span> ${this._esc(inv.payment_method)}</div>` : ''}
             </div>
 
             <!-- Line Items -->
@@ -501,7 +501,7 @@ window.OwnerInvoiceManager = {
               </div>
             </div>
 
-            ${inv.notes ? `<div class="cc-text-sm"><span class="cc-text-muted">Notes:</span> ${inv.notes}</div>` : ''}
+            ${inv.notes ? `<div class="cc-text-sm"><span class="cc-text-muted">Notes:</span> ${this._esc(inv.notes)}</div>` : ''}
           </div>
 
           <!-- Footer Actions -->
@@ -694,5 +694,14 @@ window.OwnerInvoiceManager = {
     } catch (err) {
       CleanClaw.showToast('Error: ' + (err.message || 'Unknown error'), 'error');
     }
+  },
+
+  // ============================================
+  // SECURITY HELPERS
+  // ============================================
+
+  _esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g, '&#x27;');
   },
 };

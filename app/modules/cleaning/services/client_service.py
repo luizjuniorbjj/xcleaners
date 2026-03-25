@@ -89,33 +89,8 @@ async def create_client(
         if dup:
             return {"duplicate": True, "existing_client_id": str(dup["id"]), "match_field": "email"}
 
-    # 3. Handle tags and notes mapping
-    # tags and internal_notes are stored in the notes JSON or as JSONB
-    # Since DB has TEXT notes column, we merge internal_notes into notes
-    # and store tags as JSON in pet_details adjacent field or notes prefix
-    tags = data.pop("tags", [])
-    internal_notes = data.pop("internal_notes", None)
-    preferred_contact = data.pop("preferred_contact", None)
-    billing_address = data.pop("billing_address", None)
-
-    # Combine notes: store structured data as JSON prefix in notes
-    original_notes = data.get("notes", "") or ""
-    meta = {}
-    if tags:
-        meta["tags"] = tags
-    if internal_notes:
-        meta["internal_notes"] = internal_notes
-    if preferred_contact:
-        meta["preferred_contact"] = preferred_contact
-    if billing_address:
-        meta["billing_address"] = billing_address
-    if meta:
-        data["notes"] = f"__META__{json.dumps(meta)}__META__{original_notes}"
-    elif original_notes:
-        data["notes"] = original_notes
-
-    # 4. Build INSERT
-    # Filter to valid DB columns only
+    # 3. Build INSERT
+    # Filter to valid DB columns only (migration 020 added the extended columns)
     valid_columns = {
         "first_name", "last_name", "email", "phone", "phone_secondary",
         "address_line1", "address_line2", "city", "state", "zip_code",
@@ -123,6 +98,12 @@ async def create_client(
         "bedrooms", "bathrooms", "square_feet", "has_pets", "pet_details",
         "access_instructions", "preferred_day", "preferred_time_start",
         "preferred_time_end", "notes", "source",
+        # Migration 020: proper columns (no longer stored in notes __META__)
+        "preferred_contact", "billing_address", "tags", "internal_notes",
+        "key_location", "lockbox_code", "alarm_code", "gate_code",
+        "garage_code", "parking_instructions",
+        "pet_type", "pet_name", "pet_temperament", "pet_location_during_cleaning",
+        "products_to_use", "products_to_avoid", "rooms_to_skip", "preferred_cleaning_order",
     }
 
     insert_data = {k: v for k, v in data.items() if k in valid_columns and v is not None}
@@ -182,38 +163,6 @@ async def update_client(
     data: dict,
 ) -> Optional[dict]:
     """Update client fields. Returns updated row or None if not found."""
-    # Handle meta fields
-    tags = data.pop("tags", None)
-    internal_notes = data.pop("internal_notes", None)
-    preferred_contact = data.pop("preferred_contact", None)
-    billing_address = data.pop("billing_address", None)
-
-    # If meta fields changed, update the notes column
-    if any(v is not None for v in [tags, internal_notes, preferred_contact, billing_address]):
-        current = await db.pool.fetchrow(
-            "SELECT notes FROM cleaning_clients WHERE id = $1 AND business_id = $2",
-            client_id, business_id,
-        )
-        if not current:
-            return None
-
-        current_notes = current["notes"] or ""
-        meta, clean_notes = _parse_meta(current_notes)
-
-        if tags is not None:
-            meta["tags"] = tags
-        if internal_notes is not None:
-            meta["internal_notes"] = internal_notes
-        if preferred_contact is not None:
-            meta["preferred_contact"] = preferred_contact
-        if billing_address is not None:
-            meta["billing_address"] = billing_address
-
-        if meta:
-            data["notes"] = f"__META__{json.dumps(meta)}__META__{clean_notes}"
-        else:
-            data["notes"] = clean_notes
-
     # Handle status change: paused -> suspend schedules
     new_status = data.get("status")
 
@@ -224,6 +173,12 @@ async def update_client(
         "bedrooms", "bathrooms", "square_feet", "has_pets", "pet_details",
         "access_instructions", "preferred_day", "preferred_time_start",
         "preferred_time_end", "notes", "status",
+        # Migration 020: proper columns (no longer stored in notes __META__)
+        "preferred_contact", "billing_address", "tags", "internal_notes",
+        "key_location", "lockbox_code", "alarm_code", "gate_code",
+        "garage_code", "parking_instructions",
+        "pet_type", "pet_name", "pet_temperament", "pet_location_during_cleaning",
+        "products_to_use", "products_to_avoid", "rooms_to_skip", "preferred_cleaning_order",
     }
 
     update_data = {k: v for k, v in data.items() if k in valid_columns and v is not None}
@@ -511,7 +466,7 @@ def _row_to_dict(row) -> dict:
 
     d = dict(row)
 
-    # Parse meta from notes
+    # Parse __META__ from notes for backward compat (rows written before migration 020)
     notes_raw = d.get("notes", "") or ""
     meta, clean_notes = _parse_meta(notes_raw)
 
@@ -547,11 +502,19 @@ def _row_to_dict(row) -> dict:
         if val is not None:
             d[key] = float(val)
 
-    # Extract meta fields
-    d["tags"] = meta.get("tags", [])
-    d["internal_notes"] = meta.get("internal_notes")
-    d["preferred_contact"] = meta.get("preferred_contact")
-    d["billing_address"] = meta.get("billing_address")
+    # Extract extended fields — prefer real DB columns (migration 020),
+    # fall back to __META__ for rows written before migration 020.
+    if d.get("tags") is None:
+        d["tags"] = meta.get("tags", [])
+    if d.get("internal_notes") is None:
+        d["internal_notes"] = meta.get("internal_notes")
+    if d.get("preferred_contact") is None:
+        d["preferred_contact"] = meta.get("preferred_contact")
+    if d.get("billing_address") is None:
+        d["billing_address"] = meta.get("billing_address")
+    # Ensure tags is always a list
+    if not isinstance(d["tags"], list):
+        d["tags"] = []
     d["notes"] = clean_notes if clean_notes else None
 
     # Defaults

@@ -26,6 +26,9 @@ window.CleanClaw = {
   async init() {
     console.log('[CleanClaw] Initializing...');
 
+    // Apply theme preference (localStorage → system preference)
+    this._applyTheme();
+
     // Register service worker
     this._registerSW();
 
@@ -204,6 +207,43 @@ window.CleanClaw = {
       console.error('[CleanClaw] Init failed:', err);
       loadingScreen.style.display = 'none';
       this._showLogin();
+    }
+  },
+
+  // ----- Theme Management -----
+
+  _applyTheme() {
+    const saved = localStorage.getItem('xcleaners-theme');
+    if (saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    // Listen for system preference changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      const manual = localStorage.getItem('xcleaners-theme');
+      if (!manual) {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      }
+    });
+  },
+
+  setTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('xcleaners-theme', 'dark');
+    } else if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem('xcleaners-theme', 'light');
+    } else {
+      // 'system' — remove manual preference, re-apply system
+      localStorage.removeItem('xcleaners-theme');
+      document.documentElement.removeAttribute('data-theme');
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
     }
   },
 

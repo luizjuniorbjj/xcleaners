@@ -808,13 +808,13 @@ window.OwnerTeamManager = {
             <label class="cc-label cc-label-required">Client</label>
             <select name="client_id" required class="cc-select">
               <option value="">Select client...</option>
-              ${clients.map(c => `<option value="${c.id}">${c.first_name} ${c.last_name || ''} — ${c.address || 'No address'}</option>`).join('')}
+              ${clients.map(c => `<option value="${c.id}">${this._esc(c.first_name)} ${this._esc(c.last_name || '')} — ${this._esc(c.address || 'No address')}</option>`).join('')}
             </select>
           </div>
           <div class="cc-form-group">
             <label class="cc-label cc-label-required">Service</label>
             <select name="service" required class="cc-select">
-              ${services.map(s => `<option value="${s.name}">${s.name} ($${s.base_price}) — ${s.estimated_duration_minutes || 120}min</option>`).join('')}
+              ${services.map(s => `<option value="${this._esc(s.name)}">${this._esc(s.name)} ($${s.base_price}) — ${s.estimated_duration_minutes || 120}min</option>`).join('')}
             </select>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--cc-space-3);">

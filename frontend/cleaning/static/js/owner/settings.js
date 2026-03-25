@@ -30,6 +30,7 @@ window.OwnerSettings = {
           <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="areas" style="border-bottom:2px solid transparent;border-radius:0;">${t('settings.tab_areas')}</button>
           <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="pricing" style="border-bottom:2px solid transparent;border-radius:0;">${t('settings.tab_pricing')}</button>
           <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="notifications" style="border-bottom:2px solid transparent;border-radius:0;">${t('settings.tab_notifications')}</button>
+          <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="appearance" style="border-bottom:2px solid transparent;border-radius:0;">Appearance</button>
           <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="plan" style="border-bottom:2px solid transparent;border-radius:0;">${t('settings.tab_plan')}</button>
         </div>
 
@@ -162,6 +163,9 @@ window.OwnerSettings = {
         break;
       case 'notifications':
         this._renderNotifications(el);
+        break;
+      case 'appearance':
+        this._renderAppearance(el);
         break;
       case 'plan':
         this._renderPlan(el);
@@ -808,6 +812,81 @@ window.OwnerSettings = {
         </div>
       </div>
     `;
+  },
+
+  // ---- Appearance Tab ----
+
+  _renderAppearance(el) {
+    const current = localStorage.getItem('xcleaners-theme') || 'system';
+
+    el.innerHTML = `
+      <div class="cc-card">
+        <div class="cc-card-header">
+          <span class="cc-card-title">Theme</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:var(--cc-space-4);padding:var(--cc-space-2) 0;">
+          <p class="cc-text-sm cc-text-muted" style="margin:0;">Choose how Xcleaners looks. The system option automatically matches your device preference.</p>
+          <div style="display:flex;gap:var(--cc-space-3);flex-wrap:wrap;">
+            <button
+              class="cc-btn ${current === 'light' ? 'cc-btn-primary' : 'cc-btn-secondary'}"
+              id="theme-btn-light"
+              aria-pressed="${current === 'light'}"
+              onclick="OwnerSettings._setTheme('light')"
+              style="display:flex;align-items:center;gap:var(--cc-space-2);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+              Light
+            </button>
+            <button
+              class="cc-btn ${current === 'dark' ? 'cc-btn-primary' : 'cc-btn-secondary'}"
+              id="theme-btn-dark"
+              aria-pressed="${current === 'dark'}"
+              onclick="OwnerSettings._setTheme('dark')"
+              style="display:flex;align-items:center;gap:var(--cc-space-2);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              Dark
+            </button>
+            <button
+              class="cc-btn ${current === 'system' ? 'cc-btn-primary' : 'cc-btn-secondary'}"
+              id="theme-btn-system"
+              aria-pressed="${current === 'system'}"
+              onclick="OwnerSettings._setTheme('system')"
+              style="display:flex;align-items:center;gap:var(--cc-space-2);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              System
+            </button>
+          </div>
+          <p class="cc-text-sm cc-text-muted" style="margin:0;" id="theme-status">
+            ${current === 'system'
+              ? `Using system preference (${window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'})`
+              : `Theme set to: <strong>${current}</strong>`}
+          </p>
+        </div>
+      </div>
+    `;
+  },
+
+  _setTheme(theme) {
+    if (typeof CleanClaw !== 'undefined' && CleanClaw.setTheme) {
+      CleanClaw.setTheme(theme);
+    } else {
+      // Fallback if CleanClaw not yet initialized
+      if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('xcleaners-theme', 'dark');
+      } else if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('xcleaners-theme', 'light');
+      } else {
+        localStorage.removeItem('xcleaners-theme');
+        document.documentElement.removeAttribute('data-theme');
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      }
+    }
+    // Re-render to update button states
+    const el = document.getElementById('settings-content');
+    if (el) this._renderAppearance(el);
   },
 
   _handleUpgrade(plan) {

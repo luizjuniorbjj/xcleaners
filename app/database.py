@@ -26,10 +26,22 @@ logger = logging.getLogger("clawin.database")
 _pool: Optional[asyncpg.Pool] = None
 
 
+async def _init_connection(conn):
+    """
+    Pool setup callback — runs once per new connection.
+    Sets the application role to enforce RLS policies.
+    NOTE: Role name 'xcleaners_app' was renamed from the legacy role in migration 020.
+    """
+    try:
+        await conn.execute("SET ROLE xcleaners_app")
+    except Exception as e:
+        logger.warning(f"[DB] Could not SET ROLE xcleaners_app (role may not exist): {e}")
+
+
 async def init_db():
     """Initialize connection pool and ensure schema exists"""
     global _pool
-    _pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20)
+    _pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20, init=_init_connection)
 
     async with _pool.acquire() as conn:
         version = await conn.fetchval("SELECT version()")

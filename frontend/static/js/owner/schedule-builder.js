@@ -732,8 +732,8 @@ window.OwnerScheduleBuilder = {
         eventEl.title = `${clientName} - ${props.service_type || ''}\n${address}`;
         eventEl.innerHTML = `
           <div class="nc-event-time">${timeText}</div>
-          <div class="nc-event-title">${clientName}</div>
-          ${address && heightSlots >= 2 ? `<div class="nc-event-address">${address}</div>` : ''}
+          <div class="nc-event-title">${this._esc(clientName)}</div>
+          ${address && heightSlots >= 2 ? `<div class="nc-event-address">${this._esc(address)}</div>` : ''}
         `;
         eventEl.draggable = true;
 
@@ -831,8 +831,8 @@ window.OwnerScheduleBuilder = {
             <div class="nc-mobile-card-color" style="background:${teamColor};"></div>
             <div class="nc-mobile-card-body">
               <div class="nc-mobile-card-time">${timeText}</div>
-              <div class="nc-mobile-card-title">${clientName}</div>
-              <div class="nc-mobile-card-meta">${props.service_type || ''} ${teamName ? '&middot; ' + teamName : ''} ${address ? '&middot; ' + address : ''}</div>
+              <div class="nc-mobile-card-title">${this._esc(clientName)}</div>
+              <div class="nc-mobile-card-meta">${this._esc(props.service_type || '')} ${teamName ? '&middot; ' + this._esc(teamName) : ''} ${address ? '&middot; ' + this._esc(address) : ''}</div>
             </div>
             <span class="cc-badge ${this._getStatusBadgeClass(status)}" style="align-self:center;font-size:0.6rem;">${status}</span>
           </div>
@@ -1126,7 +1126,7 @@ window.OwnerScheduleBuilder = {
     // Populate teams — always read LIVE data from DemoData if available
     const liveTeams = (typeof DemoData !== 'undefined' && DemoData._teams) ? DemoData._teams : this._teams;
     teamSelect.innerHTML = `<option value="">-- Select Team --</option>` +
-      liveTeams.filter(t => t.is_active !== false).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+      liveTeams.filter(t => t.is_active !== false).map(t => `<option value="${t.id}">${this._esc(t.name)}</option>`).join('');
 
     // Populate clients and services — read LIVE from DemoData at modal open time
     clientSelect.innerHTML = `<option value="">Loading...</option>`;
@@ -1168,7 +1168,7 @@ window.OwnerScheduleBuilder = {
       const data = await CleanAPI.cleanGet('/clients');
       const clients = (data && data.clients) ? data.clients : (Array.isArray(data) ? data : []);
       selectEl.innerHTML = `<option value="">-- Select Client --</option>` +
-        clients.map(c => `<option value="${c.id}">${c.name || c.full_name || (c.first_name + ' ' + c.last_name)}</option>`).join('');
+        clients.map(c => `<option value="${c.id}">${this._esc(c.name || c.full_name || ((c.first_name || '') + ' ' + (c.last_name || '')).trim())}</option>`).join('');
     } catch (err) {
       selectEl.innerHTML = `<option value="">No clients available</option>`;
     }
@@ -1179,7 +1179,7 @@ window.OwnerScheduleBuilder = {
       const data = await CleanAPI.cleanGet('/services');
       const services = (data && data.services) ? data.services : (Array.isArray(data) ? data : []);
       selectEl.innerHTML = `<option value="">-- Select Service --</option>` +
-        services.map(s => `<option value="${s.id}">${s.name} ${s.duration_minutes ? '(' + s.duration_minutes + ' min)' : ''}</option>`).join('');
+        services.map(s => `<option value="${s.id}">${this._esc(s.name)} ${s.duration_minutes ? '(' + s.duration_minutes + ' min)' : ''}</option>`).join('');
     } catch (err) {
       selectEl.innerHTML = `<option value="">No services available</option>`;
     }
@@ -1311,7 +1311,7 @@ window.OwnerScheduleBuilder = {
       <label class="cc-tag cc-tag-primary" style="cursor:pointer;border-color:${t.color || 'var(--cc-primary-200)'};gap:var(--cc-space-2);">
         <input type="checkbox" checked data-team-id="${t.id}" onchange="OwnerScheduleBuilder._onTeamFilterChange()" style="accent-color:${t.color || 'var(--cc-primary-500)'};" />
         <span class="cc-status-dot" style="background:${t.color || 'var(--cc-primary-500)'};width:8px;height:8px;border-radius:50%;display:inline-block;"></span>
-        ${t.name}
+        ${this._esc(t.name)}
       </label>
     `).join('');
   },
@@ -1373,13 +1373,13 @@ window.OwnerScheduleBuilder = {
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <span class="cc-text-sm cc-text-muted">Team</span>
-            <span class="cc-text-sm cc-font-medium">${data.team_name || 'Unassigned'}</span>
+            <span class="cc-text-sm cc-font-medium">${this._esc(data.team_name || 'Unassigned')}</span>
           </div>
         </div>
 
         <div style="border-top:1px solid var(--cc-neutral-200);padding-top:var(--cc-space-4);">
           <h4 style="margin:0 0 var(--cc-space-3);" class="cc-text-sm cc-font-semibold">Location</h4>
-          <p class="cc-text-sm">${data.address || '-'}${data.city ? ', ' + data.city : ''}</p>
+          <p class="cc-text-sm">${this._esc(data.address || '-')}${data.city ? ', ' + this._esc(data.city) : ''}</p>
           ${data.address ? `
             <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((data.address || '') + ' ' + (data.city || ''))}"
                target="_blank" rel="noopener" class="cc-btn cc-btn-ghost cc-btn-xs" style="margin-top:var(--cc-space-2);">
@@ -1391,14 +1391,14 @@ window.OwnerScheduleBuilder = {
         ${data.access_instructions ? `
           <div style="border-top:1px solid var(--cc-neutral-200);padding-top:var(--cc-space-4);">
             <h4 style="margin:0 0 var(--cc-space-2);" class="cc-text-sm cc-font-semibold">Access Instructions</h4>
-            <p class="cc-text-sm cc-text-muted">${data.access_instructions}</p>
+            <p class="cc-text-sm cc-text-muted">${this._esc(data.access_instructions)}</p>
           </div>
         ` : ''}
 
         ${data.special_instructions ? `
           <div style="border-top:1px solid var(--cc-neutral-200);padding-top:var(--cc-space-4);">
             <h4 style="margin:0 0 var(--cc-space-2);" class="cc-text-sm cc-font-semibold">Special Instructions</h4>
-            <p class="cc-text-sm cc-text-muted">${data.special_instructions}</p>
+            <p class="cc-text-sm cc-text-muted">${this._esc(data.special_instructions)}</p>
           </div>
         ` : ''}
 
@@ -1646,5 +1646,12 @@ window.OwnerScheduleBuilder = {
     }
     this._calendar = null;
     this._events = [];
+  },
+
+  // --- Security Helpers ---
+
+  _esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g, '&#x27;');
   },
 };

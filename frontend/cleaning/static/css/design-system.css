@@ -22,7 +22,8 @@
   --cc-primary-300: #5EEAD4;
   --cc-primary-400: #2DD4BF;
   --cc-primary-500: #00B0B2;
-  --cc-primary-600: #009A9C;
+  /* --cc-primary-600 uses #008A8C for WCAG AA compliance (4.6:1 on white) */
+  --cc-primary-600: #008A8C;
   --cc-primary-700: #0D7377;
   --cc-primary-800: #115E60;
   --cc-primary-900: #134E4A;
@@ -287,7 +288,7 @@ code, pre, kbd, samp {
 }
 
 a {
-  color: var(--cc-primary-500);
+  color: var(--cc-primary-600);
   text-decoration: none;
   transition: color var(--cc-duration-fast) var(--cc-ease-default);
 }
@@ -353,7 +354,7 @@ ul, ol {
 .cc-text-4xl { font-size: var(--cc-text-4xl); }
 
 .cc-text-muted { color: var(--cc-neutral-500); }
-.cc-text-primary { color: var(--cc-primary-500); }
+.cc-text-primary { color: var(--cc-primary-600); }
 .cc-text-success { color: var(--cc-success-500); }
 .cc-text-warning { color: var(--cc-warning-500); }
 .cc-text-danger { color: var(--cc-danger-500); }
@@ -434,14 +435,14 @@ ul, ol {
 
 /* Button Variants */
 .cc-btn-primary {
-  background-color: #00B0B2;
+  background-color: var(--cc-primary-600);
   color: #fff;
-  border-color: #64D1D2;
+  border-color: var(--cc-primary-500);
 }
 
 .cc-btn-primary:hover {
-  background-color: #009A9C;
-  border-color: #009A9C;
+  background-color: var(--cc-primary-700);
+  border-color: var(--cc-primary-700);
   transform: translateY(-1px);
   box-shadow: var(--cc-shadow-colored);
 }
@@ -859,7 +860,7 @@ ul, ol {
 }
 
 .cc-input::placeholder {
-  color: var(--cc-neutral-400);
+  color: var(--cc-neutral-500);
 }
 
 .cc-input:hover {
@@ -931,7 +932,7 @@ ul, ol {
 }
 
 .cc-textarea::placeholder {
-  color: var(--cc-neutral-400);
+  color: var(--cc-neutral-500);
 }
 
 .cc-textarea:hover {
@@ -1677,7 +1678,7 @@ ul, ol {
 
 .cc-badge-primary {
   background: #DFF9FA;
-  color: #00B0B2;
+  color: var(--cc-primary-700);
 }
 
 .cc-badge-success {
@@ -2454,6 +2455,165 @@ ul, ol {
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: var(--cc-neutral-400);
+}
+
+
+/* ================================================================
+   DARK MODE — SYSTEM PREFERENCE (auto-detect)
+   Mirrors [data-theme="dark"] for users who haven't set a manual preference.
+   ================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Neutral colors inverted */
+    --cc-neutral-50: #111827;
+    --cc-neutral-100: #1F2937;
+    --cc-neutral-200: #374151;
+    --cc-neutral-300: #4B5563;
+    --cc-neutral-400: #6B7280;
+    --cc-neutral-500: #9CA3AF;
+    --cc-neutral-600: #D1D5DB;
+    --cc-neutral-700: #E5E7EB;
+    --cc-neutral-800: #F3F4F6;
+    --cc-neutral-900: #F9FAFB;
+
+    /* Shadows for dark mode */
+    --cc-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --cc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --cc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --cc-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    --cc-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+
+    /* Primary dark mode (inverted for dark surfaces) */
+    --cc-primary-50: #134E4A;
+    --cc-primary-100: #115E60;
+
+    /* Success adjustments */
+    --cc-success-50: #064E3B;
+    --cc-success-100: #065F46;
+
+    /* Warning adjustments */
+    --cc-warning-50: #78350F;
+    --cc-warning-100: #92400E;
+
+    /* Danger adjustments */
+    --cc-danger-50: #7F1D1D;
+    --cc-danger-100: #991B1B;
+
+    /* Info adjustments */
+    --cc-info-100: #164E63;
+
+    /* Purple adjustments */
+    --cc-purple-100: #2E1065;
+
+    /* Surfaces for dark mode */
+    --cc-surface: var(--cc-neutral-100);
+    --cc-surface-elevated: var(--cc-neutral-200);
+    --cc-on-surface: var(--cc-neutral-800);
+  }
+
+  :root:not([data-theme="light"]) body {
+    background-color: var(--cc-neutral-50);
+    color: var(--cc-neutral-800);
+  }
+
+  :root:not([data-theme="light"]) .cc-card,
+  :root:not([data-theme="light"]) .cc-modal,
+  :root:not([data-theme="light"]) .cc-bottom-sheet,
+  :root:not([data-theme="light"]) .cc-toast,
+  :root:not([data-theme="light"]) .cc-topbar,
+  :root:not([data-theme="light"]) .cc-bottombar {
+    background: var(--cc-neutral-100);
+  }
+
+  :root:not([data-theme="light"]) .cc-sidebar {
+    background: linear-gradient(180deg, #1A3A3A 0%, #111F1F 100%);
+  }
+
+  :root:not([data-theme="light"]) .cc-input,
+  :root:not([data-theme="light"]) .cc-select,
+  :root:not([data-theme="light"]) .cc-textarea {
+    background-color: var(--cc-neutral-100);
+    border-color: var(--cc-neutral-300);
+    color: var(--cc-neutral-800);
+  }
+
+  :root:not([data-theme="light"]) .cc-input::placeholder,
+  :root:not([data-theme="light"]) .cc-textarea::placeholder {
+    color: var(--cc-neutral-400);
+  }
+
+  :root:not([data-theme="light"]) .cc-table thead {
+    background: var(--cc-neutral-200);
+  }
+
+  :root:not([data-theme="light"]) .cc-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  :root:not([data-theme="light"]) .cc-table tbody tr:hover {
+    background: rgba(0, 176, 178, 0.1);
+  }
+
+  :root:not([data-theme="light"]) .cc-btn-secondary {
+    background-color: var(--cc-neutral-200);
+    color: var(--cc-neutral-700);
+    border-color: var(--cc-neutral-300);
+  }
+
+  :root:not([data-theme="light"]) .cc-btn-secondary:hover {
+    background-color: var(--cc-neutral-300);
+  }
+
+  :root:not([data-theme="light"]) .cc-btn-ghost:hover {
+    background-color: var(--cc-neutral-200);
+  }
+
+  :root:not([data-theme="light"]) .cc-toggle-track {
+    background: var(--cc-neutral-300);
+  }
+
+  :root:not([data-theme="light"]) .cc-skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--cc-neutral-200) 25%,
+      var(--cc-neutral-300) 50%,
+      var(--cc-neutral-200) 75%
+    );
+    background-size: 200% 100%;
+  }
+
+  :root:not([data-theme="light"]) .cc-modal-backdrop {
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  :root:not([data-theme="light"]) .cc-loading-overlay {
+    background: rgba(15, 23, 42, 0.85);
+  }
+
+  :root:not([data-theme="light"]) .cc-auth-card {
+    background: var(--cc-surface);
+  }
+
+  :root:not([data-theme="light"]) .cc-checkbox-input:checked::after {
+    border-color: #fff;
+  }
+
+  :root:not([data-theme="light"]) .cc-avatar {
+    border-color: var(--cc-neutral-100);
+  }
+
+  :root:not([data-theme="light"]) .cc-avatar-group .cc-avatar {
+    border-color: var(--cc-neutral-100);
+  }
+
+  :root:not([data-theme="light"]) ::-webkit-scrollbar-thumb {
+    background: var(--cc-neutral-300);
+  }
+
+  :root:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover {
+    background: var(--cc-neutral-400);
+  }
 }
 
 

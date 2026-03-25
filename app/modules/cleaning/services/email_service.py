@@ -8,6 +8,7 @@ Templates: booking_confirmation, booking_reminder, booking_cancelled,
 All templates use inline CSS for responsive HTML email.
 """
 
+import asyncio
 import html
 import logging
 import os
@@ -40,6 +41,25 @@ BRAND_DARK = "#1557b0"
 # BASE EMAIL SEND
 # ============================================
 
+def _send_smtp(to: str, subject: str, html_body: str, text_body: str) -> None:
+    """
+    Synchronous SMTP send — runs in a thread executor to avoid blocking the event loop.
+    Raises on any SMTP error so the async caller can handle it.
+    """
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
+    msg["To"] = to
+
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+
+
 async def send_email(
     to: str,
     subject: str,
@@ -47,7 +67,7 @@ async def send_email(
     text_body: Optional[str] = None,
 ) -> dict:
     """
-    Send an email via SMTP.
+    Send an email via SMTP (non-blocking).
 
     Args:
         to: Recipient email address
@@ -64,22 +84,13 @@ async def send_email(
     if not to:
         return {"sent": False, "error": "No recipient email"}
 
+    # Build plain text fallback before dispatching to thread
+    if not text_body:
+        text_body = _strip_html(html_body)
+
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
-        msg["To"] = to
-
-        # Plain text fallback
-        if not text_body:
-            text_body = _strip_html(html_body)
-        msg.attach(MIMEText(text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _send_smtp, to, subject, html_body, text_body)
 
         logger.info("[EMAIL] Sent to %s: %s", to, subject)
         return {"sent": True}

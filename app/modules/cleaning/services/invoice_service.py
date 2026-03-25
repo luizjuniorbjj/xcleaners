@@ -33,25 +33,29 @@ if STRIPE_SECRET_KEY:
 # ============================================
 
 async def _next_invoice_number(db: Database, business_id: str) -> str:
-    """Generate the next sequential invoice number for a business."""
-    row = await db.pool.fetchrow(
-        """SELECT invoice_number FROM cleaning_invoices
-           WHERE business_id = $1
-           ORDER BY created_at DESC LIMIT 1""",
-        business_id,
-    )
-    if row and row["invoice_number"]:
-        # Parse "INV-2026-0042" -> 42
-        parts = row["invoice_number"].rsplit("-", 1)
-        try:
-            seq = int(parts[-1]) + 1
-        except (ValueError, IndexError):
-            seq = 1
-    else:
-        seq = 1
+    """Generate next invoice number atomically using FOR UPDATE to prevent races."""
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """SELECT invoice_number FROM cleaning_invoices
+                   WHERE business_id = $1
+                   ORDER BY created_at DESC
+                   LIMIT 1
+                   FOR UPDATE""",
+                business_id,
+            )
+            if row and row["invoice_number"]:
+                # Parse "INV-2026-0042" -> 42
+                parts = row["invoice_number"].rsplit("-", 1)
+                try:
+                    seq = int(parts[-1]) + 1
+                except (ValueError, IndexError):
+                    seq = 1
+            else:
+                seq = 1
 
-    year = date.today().year
-    return f"INV-{year}-{seq:04d}"
+            year = date.today().year
+            return f"INV-{year}-{seq:04d}"
 
 
 # ============================================
