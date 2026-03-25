@@ -73,7 +73,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'strict-dynamic' https://cdn.jsdelivr.net https://accounts.google.com; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
