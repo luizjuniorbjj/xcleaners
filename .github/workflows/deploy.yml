@@ -1,4 +1,4 @@
-name: Xcleaners CI
+name: Xcleaners CI/CD
 
 on:
   push:
@@ -20,3 +20,16 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy to Railway
+        run: railway up --service cleanclaw-api --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
