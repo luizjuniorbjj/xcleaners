@@ -27,6 +27,6 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
       - name: Deploy to Railway
-        run: railway up --service cleanclaw --detach
+        run: railway up --service Xcleaners --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
