@@ -1,7 +1,9 @@
-name: Xcleaners Deploy
+name: Xcleaners CI
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -18,19 +20,3 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run tests
         run: python -m pytest tests/ -v --tb=short
-
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-      - name: List Railway services
-        run: railway service list 2>&1 || railway status 2>&1 || echo "Could not list services"
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      - name: Deploy to Railway
-        run: railway up --service xcleaners --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
