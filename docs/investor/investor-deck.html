@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xcleaners — Investor Deck 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-snap-type:y mandatory}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:#0A0F1A;color:#E8ECF1;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.slide{width:100%;height:100vh;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden;scroll-snap-align:start;padding:60px 80px}
+.slide-white{background:#F8FAFB;color:#0A0F1A}
+.slide-dark{background:#0A0F1A}
+.slide-teal{background:linear-gradient(135deg,#006B6D 0%,#00B0B2 50%,#2DD4BF 100%);color:#fff}
+.slide-gradient{background:linear-gradient(160deg,#0A0F1A 0%,#0D2626 40%,#0A0F1A 100%)}
+.nav{position:fixed;bottom:32px;right:40px;display:flex;gap:8px;z-index:100;opacity:.6;transition:opacity .3s}
+.nav:hover{opacity:1}
+.nav button{width:40px;height:40px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:rgba(10,15,26,.8);backdrop-filter:blur(12px);color:#E8ECF1;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.nav button:hover{background:#00B0B2;border-color:#00B0B2;color:#fff}
+.slide-counter{position:fixed;bottom:38px;left:40px;font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(255,255,255,.3);z-index:100;letter-spacing:.1em}
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#00B0B2,#2DD4BF);z-index:200;transition:width .4s ease}
+h1{font-weight:800;letter-spacing:-.04em;line-height:1.0}
+h2{font-weight:700;letter-spacing:-.03em;line-height:1.08}
+h3{font-weight:600;font-size:22px;line-height:1.2}
+.mega{font-size:clamp(48px,6vw,80px)}
+.large{font-size:clamp(36px,4.5vw,60px)}
+.medium{font-size:clamp(28px,3vw,42px)}
+.sub{font-size:18px;line-height:1.7;color:#8B95A5;max-width:640px;font-weight:400}
+.slide-white .sub{color:#5A6577}
+.teal{color:#00B0B2}.green{color:#10B981}.amber{color:#F59E0B}.red{color:#EF4444}.muted{color:#5A6577}
+.mono{font-family:'JetBrains Mono',monospace}
+.highlight{background:linear-gradient(120deg,rgba(0,176,178,.15) 0%,rgba(0,176,178,.05) 100%);border-left:3px solid #00B0B2;padding:20px 24px;border-radius:0 8px 8px 0}
+.topbar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:24px 80px}
+.topbar .tag{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;color:#00B0B2;text-transform:uppercase}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+.grid-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:28px}
+.card:hover{border-color:rgba(0,176,178,.2);background:rgba(0,176,178,.03)}
+.slide-white .card{background:#fff;border:1px solid #E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card-teal{border-color:rgba(0,176,178,.3);background:rgba(0,176,178,.06)}
+.table-wrap{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:rgba(0,176,178,.08);text-align:left;padding:14px 18px;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#00B0B2;border-bottom:1px solid rgba(255,255,255,.06)}
+td{padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.04)}
+tr:last-child td{border-bottom:none}
+.check{color:#10B981}.cross{color:#EF4444;opacity:.4}
+.slide-white table th{background:#F0F5F5;color:#00837E;border-bottom:1px solid #E2E8F0}
+.slide-white table td{border-bottom:1px solid #F1F5F9}
+.pill{display:inline-flex;align-items:center;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:600;gap:6px}
+.pill-teal{background:rgba(0,176,178,.12);color:#00B0B2;border:1px solid rgba(0,176,178,.2)}
+.pill-green{background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2)}
+.pill-dark{background:rgba(255,255,255,.06);color:#8B95A5;border:1px solid rgba(255,255,255,.08)}
+.equation{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:32px 0}
+.eq-block{text-align:center;padding:20px 28px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;min-width:160px}
+.eq-block .val{font-size:28px;font-weight:800;color:#00B0B2;margin-bottom:4px}
+.eq-block .lbl{font-size:11px;color:#8B95A5;text-transform:uppercase;letter-spacing:.1em}
+.eq-op{font-size:32px;font-weight:300;color:#5A6577}
+.timeline{display:flex;gap:0;margin-top:32px}
+.timeline-item{flex:1;position:relative;padding:20px 20px 20px 0}
+.timeline-item::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:#1E293B;border-radius:2px}
+.timeline-item.active::before{background:linear-gradient(90deg,#00B0B2,#2DD4BF)}
+.timeline-item.done::before{background:#10B981}
+.timeline-item .t-phase{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#00B0B2;margin:12px 0 6px;font-weight:600}
+.timeline-item .t-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.timeline-item .t-desc{font-size:13px;color:#8B95A5;line-height:1.5}
+.cta-box{background:linear-gradient(135deg,rgba(0,176,178,.1) 0%,rgba(0,176,178,.02) 100%);border:1px solid rgba(0,176,178,.2);border-radius:16px;padding:40px;text-align:center;margin-top:32px}
+.logo-main{display:flex;align-items:center;gap:14px;margin-bottom:32px}
+.logo-main svg{width:48px;height:48px}
+.logo-main span{font-size:28px;font-weight:800;letter-spacing:-.03em}
+/* LANG SWITCHER */
+.lang-switch{position:fixed;top:24px;right:80px;display:flex;gap:4px;z-index:300}
+.lang-switch button{padding:5px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(10,15,26,.7);backdrop-filter:blur(12px);color:#8B95A5;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:.06em}
+.lang-switch button.active{background:#00B0B2;color:#fff;border-color:#00B0B2}
+.lang-switch button:hover{border-color:#00B0B2;color:#E8ECF1}
+@media print{html{scroll-snap-type:none}.slide{page-break-after:always;height:auto;min-height:100vh}.nav,.slide-counter,.progress,.lang-switch{display:none!important}body{background:#fff;color:#0A0F1A}}
+@media(max-width:900px){
+  .slide{padding:40px 32px}
+  .topbar{padding:16px 32px}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+  .equation{flex-direction:column;align-items:stretch}
+  .timeline{flex-direction:column}
+  .lang-switch{right:32px}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{min-width:600px}
+}
+@media(max-width:600px){
+  .slide{padding:28px 20px;height:auto;min-height:100vh}
+  html{scroll-snap-type:none}
+  .topbar{padding:12px 20px}
+  .lang-switch{right:20px;top:16px}
+  .lang-switch button{padding:4px 8px;font-size:10px}
+  .mega{font-size:32px!important}
+  .large{font-size:28px!important}
+  .medium{font-size:22px!important}
+  .sub{font-size:15px}
+  .card{padding:20px}
+  .eq-block{padding:14px 16px;min-width:auto}
+  .eq-block .val{font-size:22px}
+  .eq-op{font-size:24px}
+  .cta-box{padding:24px 16px}
+  .nav{bottom:16px;right:16px}
+  .slide-counter{bottom:22px;left:20px;font-size:10px}
+  .logo-main svg{width:36px;height:36px}
+  .logo-main span{font-size:22px}
+  .stat-num,.grid-4 div>div:first-child{font-size:28px!important}
+  .highlight{padding:14px 16px}
+}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress" style="width:0%"></div>
+
+<!-- LANGUAGE SWITCHER -->
+<div class="lang-switch">
+  <button class="active" onclick="setLang('en')">EN</button>
+  <button onclick="setLang('pt')">PT</button>
+  <button onclick="setLang('es')">ES</button>
+</div>
+
+<!-- S1 COVER -->
+<section class="slide slide-dark" id="s1">
+  <div class="topbar">
+    <div class="tag" data-i18n="confidential">Confidential</div>
+    <div class="tag">March 2026</div>
+  </div>
+  <div class="logo-main">
+    <svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="#00B0B2"/><path d="M14 25.5L20.5 32L34 18" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>xcleaners</span>
+  </div>
+  <h1 class="mega" style="max-width:900px" data-i18n="cover_title">The operating system<br>for cleaning businesses.</h1>
+  <p class="sub" style="margin-top:24px" data-i18n="cover_sub">One app to schedule 100+ homes, manage multiple teams, and get paid on time. Built for the 1.25 million cleaning businesses in America that still run on spreadsheets and WhatsApp.</p>
+  <div style="display:flex;gap:12px;margin-top:40px">
+    <span class="pill pill-teal">SaaS &middot; Vertical Software</span>
+    <span class="pill pill-green" data-i18n="cover_pill">MVP Built &middot; Ready to Launch</span>
+  </div>
+  <div style="position:absolute;bottom:48px;left:80px;font-size:13px;color:#5A6577">XCleaners LLC &middot; Cheyenne, WY</div>
+</section>
+
+<!-- S2 PROBLEM -->
+<section class="slide slide-gradient" id="s2">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_problem">The Problem</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="large" style="max-width:800px" data-i18n="prob_title">Cleaning business owners<br>are drowning in <span class="teal">logistics.</span></h2>
+  <div class="grid-3" style="margin-top:40px">
+    <div class="card">
+      <div style="font-size:48px;font-weight:800;color:#EF4444;margin-bottom:8px">3h</div>
+      <h3 style="margin-bottom:8px" data-i18n="prob_c1_title">Lost Every Night</h3>
+      <p style="font-size:14px;color:#8B95A5;line-height:1.6" data-i18n="prob_c1_desc">Owners spend 3 hours every evening planning tomorrow's schedule. By morning, something has already changed. Cancellations, reschedules, new clients &mdash; all managed through text messages.</p>
+    </div>
+    <div class="card">
+      <div style="font-size:48px;font-weight:800;color:#F59E0B;margin-bottom:8px">$4.2K</div>
+      <h3 style="margin-bottom:8px" data-i18n="prob_c2_title">Uncollected Revenue</h3>
+      <p style="font-size:14px;color:#8B95A5;line-height:1.6" data-i18n="prob_c2_desc">Average outstanding balance per business with 120+ clients. Payments scattered across Venmo, Zelle, cash, and checks. No automated invoicing. No follow-up system.</p>
+    </div>
+    <div class="card">
+      <div style="font-size:48px;font-weight:800;color:#00B0B2;margin-bottom:8px">90%</div>
+      <h3 style="margin-bottom:8px" data-i18n="prob_c3_title">Still on Spreadsheets</h3>
+      <p style="font-size:14px;color:#8B95A5;line-height:1.6" data-i18n="prob_c3_desc">40% paper-based, 50% on Google Sheets or Calendar. Generic tools like Jobber cost $700/month at scale and weren't built for cleaning. The industry is stuck.</p>
+    </div>
+  </div>
+  <div class="highlight" style="margin-top:32px;max-width:720px">
+    <p style="font-size:16px;font-style:italic;color:#E8ECF1;line-height:1.6" data-i18n="prob_quote">"I spend 3 hours every night figuring out tomorrow's schedule. By the time I go to bed, something's already changed."</p>
+    <p style="font-size:13px;color:#00B0B2;margin-top:8px;font-weight:600">&mdash; Maria G., New Orleans (4 teams, 120 clients)</p>
+  </div>
+</section>
+
+<!-- S3 MARKET -->
+<section class="slide slide-dark" id="s3">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_market">Market Opportunity</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" data-i18n="mkt_title">A <span class="teal">$12.5 billion</span> market with<br>almost zero software penetration.</h2>
+  <div class="grid-3" style="margin-top:40px">
+    <div class="card" style="text-align:center">
+      <div class="stat-num teal" style="font-size:clamp(40px,5vw,64px);font-weight:800;line-height:1">$12.5B</div>
+      <div style="font-size:13px;color:#8B95A5;margin-top:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:500" data-i18n="mkt_tam">TAM &middot; US Residential Cleaning</div>
+      <p style="font-size:13px;color:#5A6577;margin-top:12px" data-i18n="mkt_tam_desc">1.25M businesses, 99% independently owned. Growing 6.5% annually.</p>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:clamp(40px,5vw,64px);font-weight:800;line-height:1;color:#10B981">$2.1B</div>
+      <div style="font-size:13px;color:#8B95A5;margin-top:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:500" data-i18n="mkt_sam">SAM &middot; Tech-Reachable SMBs</div>
+      <p style="font-size:13px;color:#5A6577;margin-top:12px" data-i18n="mkt_sam_desc">200K-350K residential businesses with 1-10 teams, smartphone-equipped, ready for software.</p>
+    </div>
+    <div class="card card-teal" style="text-align:center">
+      <div style="font-size:clamp(40px,5vw,64px);font-weight:800;line-height:1;color:#fff">$18M</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:10px;text-transform:uppercase;letter-spacing:.08em;font-weight:500" data-i18n="mkt_som">SOM &middot; Year 3 Target</div>
+      <p style="font-size:13px;color:rgba(255,255,255,.5);margin-top:12px" data-i18n="mkt_som_desc">15K-30K businesses in Southeast US. Bilingual markets first: FL, TX, LA, CA, NY.</p>
+    </div>
+  </div>
+  <div class="grid-4" style="margin-top:24px">
+    <div style="text-align:center;padding:20px"><div style="font-size:32px;font-weight:800;color:#E8ECF1">1.25M</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="mkt_s1">US cleaning businesses</div></div>
+    <div style="text-align:center;padding:20px"><div style="font-size:32px;font-weight:800;color:#E8ECF1">6.5%</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="mkt_s2">Annual market growth</div></div>
+    <div style="text-align:center;padding:20px"><div style="font-size:32px;font-weight:800;color:#E8ECF1">90%</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="mkt_s3">Under 10 employees</div></div>
+    <div style="text-align:center;padding:20px"><div style="font-size:32px;font-weight:800;color:#E8ECF1">49%</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="mkt_s4">Hispanic/Latino workforce</div></div>
+  </div>
+  <p style="font-size:11px;color:#3A4250;margin-top:16px">Sources: Grand View Research, Fortune Business Insights, Zippia (2025-2026)</p>
+</section>
+
+<!-- S4 SOLUTION -->
+<section class="slide slide-dark" id="s4">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_solution">The Solution</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="large" style="max-width:800px" data-i18n="sol_title">One app.<br>Three roles.<br><span class="teal">Zero chaos.</span></h2>
+  <div class="grid-3" style="margin-top:40px">
+    <div class="card">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#00B0B2;font-weight:600;margin-bottom:12px" data-i18n="sol_owner">Business Owner</div>
+      <h3 style="margin-bottom:12px" data-i18n="sol_owner_t">Command Center</h3>
+      <ul style="font-size:14px;color:#8B95A5;line-height:2;list-style:none" data-i18n="sol_owner_list">
+        <li>&#10003; &nbsp;AI-powered schedule builder</li><li>&#10003; &nbsp;Multi-team assignment &amp; tracking</li><li>&#10003; &nbsp;Client management &amp; billing</li><li>&#10003; &nbsp;Revenue dashboards</li><li>&#10003; &nbsp;One-tap schedule publishing</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#10B981;font-weight:600;margin-bottom:12px" data-i18n="sol_team">Cleaning Team</div>
+      <h3 style="margin-bottom:12px" data-i18n="sol_team_t">Daily Job Board</h3>
+      <ul style="font-size:14px;color:#8B95A5;line-height:2;list-style:none" data-i18n="sol_team_list">
+        <li>&#10003; &nbsp;Today's schedule with addresses</li><li>&#10003; &nbsp;One-tap GPS navigation</li><li>&#10003; &nbsp;Check-in / check-out with photos</li><li>&#10003; &nbsp;Client notes &amp; access codes</li><li>&#10003; &nbsp;100% Spanish interface</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#8B5CF6;font-weight:600;margin-bottom:12px" data-i18n="sol_home">Homeowner</div>
+      <h3 style="margin-bottom:12px" data-i18n="sol_home_t">Self-Service Portal</h3>
+      <ul style="font-size:14px;color:#8B95A5;line-height:2;list-style:none" data-i18n="sol_home_list">
+        <li>&#10003; &nbsp;Upcoming appointments</li><li>&#10003; &nbsp;Reschedule without calling</li><li>&#10003; &nbsp;Auto-pay &amp; payment history</li><li>&#10003; &nbsp;House preferences saved</li><li>&#10003; &nbsp;Completion notifications</li>
+      </ul>
+    </div>
+  </div>
+  <div style="margin-top:28px;display:flex;gap:16px;align-items:center">
+    <span class="pill pill-teal">Progressive Web App</span>
+    <span class="pill pill-dark" data-i18n="sol_pill1">Works on any phone &middot; No app store needed</span>
+    <span class="pill pill-dark" data-i18n="sol_pill2">Offline capable</span>
+  </div>
+</section>
+
+<!-- S5 PRODUCT -->
+<section class="slide slide-white" id="s5">
+  <div class="topbar">
+    <div class="tag" style="color:#00837E" data-i18n="tag_product">Product</div>
+    <div style="font-size:13px;color:#8B95A5">xcleaners</div>
+  </div>
+  <h2 class="medium" style="color:#0A0F1A" data-i18n="prod_title">Built for how cleaning businesses <em>actually</em> work.</h2>
+  <div class="grid-2" style="margin-top:36px">
+    <div>
+      <div class="card" style="margin-bottom:16px"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f1_t">Schedule Intelligence</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f1_d">Recurring patterns (weekly, bi-weekly, monthly) auto-detected. Geographic clustering minimizes drive time. Cancellations instantly rebalance across teams. Target: 70%+ schedule acceptance without manual override.</p></div>
+      <div class="card" style="margin-bottom:16px"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f2_t">Real-Time Team Tracking</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f2_d">GPS check-in/check-out. Live job status. Photo verification on completion. Owners know exactly where every team is, every minute.</p></div>
+      <div class="card"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f3_t">Built-In Payments</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f3_d">Auto-generated invoices after each cleaning. Stripe-powered online payments. Homeowners pay through the app &mdash; no more chasing Venmo or cash.</p></div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f4_t">Bilingual from Day One</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f4_d">Not translated English &mdash; purpose-built in English and Spanish. Every screen, notification, and message works natively in both languages.</p></div>
+      <div class="card" style="margin-bottom:16px"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f5_t">Client Self-Service</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f5_d">Homeowners reschedule, pay, and manage preferences without calling the owner. House access codes and instructions stay with the home.</p></div>
+      <div class="card"><h3 style="color:#0A0F1A;margin-bottom:8px" data-i18n="prod_f6_t">Works Everywhere</h3><p style="font-size:14px;color:#5A6577;line-height:1.7" data-i18n="prod_f6_d">PWA runs on any smartphone &mdash; including the $150 Samsung Galaxy most cleaning teams carry. No app store, no downloads. Offline-first.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- S6 COMPETITION -->
+<section class="slide slide-dark" id="s6">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_comp">Competition</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" style="margin-bottom:8px" data-i18n="comp_title">The market is split between <span class="teal">too expensive</span><br>and <span class="amber">too limited</span>.</h2>
+  <p class="sub" style="margin-bottom:32px" data-i18n="comp_sub">No one owns the middle: affordable, cleaning-specific, and intelligent.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:22%" data-i18n="comp_th">Feature</th><th style="width:13%">ZenMaid</th><th style="width:13%">Jobber</th><th style="width:13%">Housecall Pro</th><th style="width:13%">MaidCentral</th><th style="width:16%;background:rgba(0,176,178,.15)">Xcleaners</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="font-weight:600" data-i18n="comp_price">Price (at scale)</td><td>$49/mo</td><td style="color:#EF4444;font-weight:600">$350-700/mo</td><td>$149/mo</td><td style="color:#EF4444;font-weight:600">$450/mo</td><td style="color:#10B981;font-weight:700">$29-99/mo</td></tr>
+        <tr><td style="font-weight:600" data-i18n="comp_specific">Cleaning-specific</td><td class="check">&#10003;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check">&#10003;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600" data-i18n="comp_ai">AI scheduling</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600" data-i18n="comp_bilingual">Bilingual (EN/ES)</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600" data-i18n="comp_route">Route optimization</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600" data-i18n="comp_oneapp">One app, 3 roles</td><td class="cross">&#10007;</td><td>Partial</td><td>Partial</td><td>Partial</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600">WhatsApp</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600">Offline</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="cross">&#10007;</td><td class="check" style="font-weight:700">&#10003;</td></tr>
+        <tr><td style="font-weight:600">Onboarding</td><td>30-60 min</td><td>1-3h</td><td>1-2h</td><td>2-4h</td><td style="color:#10B981;font-weight:700">&lt;10 min</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- S7 VALUE EQUATION -->
+<section class="slide slide-gradient" id="s7">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_offer">The Offer</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" style="margin-bottom:8px" data-i18n="val_title">Why cleaning businesses <span class="teal">can't say no.</span></h2>
+  <p class="sub" data-i18n="val_sub">The value equation that makes this an irresistible offer.</p>
+  <div class="equation">
+    <div class="eq-block"><div class="val">15h/week</div><div class="lbl" data-i18n="val_dream">Dream Outcome</div><p style="font-size:12px;color:#5A6577;margin-top:8px" data-i18n="val_dream_d">Time saved from manual scheduling, invoicing, and coordination</p></div>
+    <div class="eq-op">&times;</div>
+    <div class="eq-block"><div class="val">91%</div><div class="lbl" data-i18n="val_likely">Perceived Likelihood</div><p style="font-size:12px;color:#5A6577;margin-top:8px" data-i18n="val_likely_d">MVP deployed, pilot customer identified, demo available in 60 seconds</p></div>
+  </div>
+  <div style="text-align:center;margin:8px 0"><div class="eq-op" style="font-size:20px;letter-spacing:.3em" data-i18n="val_divided">DIVIDED BY</div></div>
+  <div class="equation" style="margin-top:8px">
+    <div class="eq-block"><div class="val">&lt;10 min</div><div class="lbl" data-i18n="val_time">Time to Value</div><p style="font-size:12px;color:#5A6577;margin-top:8px" data-i18n="val_time_d">Sign up, import clients, publish first schedule. No training needed.</p></div>
+    <div class="eq-op">&times;</div>
+    <div class="eq-block"><div class="val">$1/day</div><div class="lbl" data-i18n="val_effort">Effort &amp; Sacrifice</div><p style="font-size:12px;color:#5A6577;margin-top:8px" data-i18n="val_effort_d">$29/month. No contracts. No setup fees. Cancel anytime.</p></div>
+  </div>
+  <div class="cta-box" style="margin-top:24px">
+    <p style="font-size:20px;font-weight:700;margin-bottom:8px" data-i18n="val_math_t">The Math</p>
+    <p style="font-size:16px;color:#8B95A5" data-i18n="val_math_d">Owner saves <strong style="color:#10B981">15 hours/week</strong> &times; $25/hr = <strong style="color:#10B981">$1,500/month</strong> in recovered time.<br>Xcleaners costs <strong style="color:#00B0B2">$29-99/month</strong>. That's a <strong style="color:#fff">15-50x ROI</strong> on day one.</p>
+  </div>
+</section>
+
+<!-- S8 BUSINESS MODEL -->
+<section class="slide slide-dark" id="s8">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_biz">Business Model</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" data-i18n="biz_title">Three tiers. One mission:<br><span class="teal">grow with the business.</span></h2>
+  <div class="grid-3" style="margin-top:36px">
+    <div class="card">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#8B95A5;font-weight:600;margin-bottom:16px">Starter</div>
+      <div style="font-size:42px;font-weight:800;margin-bottom:4px">$29<span style="font-size:16px;font-weight:400;color:#5A6577">/mo</span></div>
+      <p style="font-size:14px;color:#5A6577;margin-bottom:20px" data-i18n="biz_t1_desc">Solo cleaners &amp; small teams</p>
+      <ul style="font-size:13px;color:#8B95A5;line-height:2.2;list-style:none" data-i18n="biz_t1_list"><li>&#9679; 1 team, 50 clients</li><li>&#9679; Manual scheduling</li><li>&#9679; Check-in/check-out</li><li>&#9679; Basic invoicing</li><li>&#9679; Email notifications</li></ul>
+    </div>
+    <div class="card card-teal" style="position:relative">
+      <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:#00B0B2;color:#fff;font-size:11px;font-weight:700;padding:4px 16px;border-radius:0 0 8px 8px;letter-spacing:.08em" data-i18n="biz_popular">MOST POPULAR</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#00B0B2;font-weight:600;margin-bottom:16px;margin-top:8px">Professional</div>
+      <div style="font-size:42px;font-weight:800;margin-bottom:4px">$49<span style="font-size:16px;font-weight:400;color:#5A6577">/mo</span></div>
+      <p style="font-size:14px;color:#5A6577;margin-bottom:20px" data-i18n="biz_t2_desc">Growing businesses, 2-5 teams</p>
+      <ul style="font-size:13px;line-height:2.2;list-style:none" data-i18n="biz_t2_list"><li style="color:#E8ECF1;font-weight:500">&#10003; 3 teams, 200 clients</li><li style="color:#E8ECF1;font-weight:500">&#10003; AI-assisted scheduling</li><li style="color:#E8ECF1;font-weight:500">&#10003; Auto-invoicing</li><li style="color:#E8ECF1;font-weight:500">&#10003; Client portal</li><li style="color:#E8ECF1;font-weight:500">&#10003; SMS + push notifications</li></ul>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#8B5CF6;font-weight:600;margin-bottom:16px">Business</div>
+      <div style="font-size:42px;font-weight:800;margin-bottom:4px">$99<span style="font-size:16px;font-weight:400;color:#5A6577">/mo</span></div>
+      <p style="font-size:14px;color:#5A6577;margin-bottom:20px" data-i18n="biz_t3_desc">Operations at scale</p>
+      <ul style="font-size:13px;color:#8B95A5;line-height:2.2;list-style:none" data-i18n="biz_t3_list"><li>&#9679; Unlimited teams &amp; clients</li><li>&#9679; Full AI auto-scheduling</li><li>&#9679; Stripe payments built-in</li><li>&#9679; WhatsApp integration</li><li>&#9679; Marketing website + AI chat</li></ul>
+    </div>
+  </div>
+  <div class="grid-3" style="margin-top:24px">
+    <div style="text-align:center;padding:16px"><div style="font-size:28px;font-weight:800;color:#00B0B2">$55</div><div style="font-size:12px;color:#5A6577;margin-top:4px">Target ARPU</div></div>
+    <div style="text-align:center;padding:16px"><div style="font-size:28px;font-weight:800;color:#10B981">20%</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="biz_annual">Annual discount (2 months free)</div></div>
+    <div style="text-align:center;padding:16px"><div style="font-size:28px;font-weight:800;color:#E8ECF1">14 days</div><div style="font-size:12px;color:#5A6577;margin-top:4px" data-i18n="biz_trial">Free trial, no credit card</div></div>
+  </div>
+</section>
+
+<!-- S9 TRACTION -->
+<section class="slide slide-dark" id="s9">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_traction">Traction</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" data-i18n="trac_title">Not a slide deck. <span class="teal">A working product.</span></h2>
+  <p class="sub" style="margin-bottom:36px" data-i18n="trac_sub">MVP fully built and deployed. Infrastructure production-ready. Demo available in 60 seconds.</p>
+  <div class="grid-4" style="margin-bottom:32px">
+    <div class="card" style="text-align:center"><div style="font-size:40px;font-weight:800;color:#00B0B2">91</div><div style="font-size:12px;color:#8B95A5;margin-top:6px">API Endpoints</div></div>
+    <div class="card" style="text-align:center"><div style="font-size:40px;font-weight:800;color:#10B981">23</div><div style="font-size:12px;color:#8B95A5;margin-top:6px" data-i18n="trac_tables">Database Tables</div></div>
+    <div class="card" style="text-align:center"><div style="font-size:40px;font-weight:800;color:#E8ECF1">20</div><div style="font-size:12px;color:#8B95A5;margin-top:6px" data-i18n="trac_screens">Production Screens</div></div>
+    <div class="card" style="text-align:center"><div style="font-size:40px;font-weight:800;color:#8B5CF6">3</div><div style="font-size:12px;color:#8B95A5;margin-top:6px" data-i18n="trac_portals">User Portals</div></div>
+  </div>
+  <div class="grid-2">
+    <div>
+      <h3 style="margin-bottom:16px" data-i18n="trac_built">What's Built</h3>
+      <ul style="font-size:14px;color:#8B95A5;line-height:2.2;list-style:none" data-i18n="trac_built_list">
+        <li><span class="check">&#10003;</span> Full backend (FastAPI + PostgreSQL + Redis)</li><li><span class="check">&#10003;</span> PWA frontend (3 roles, 20 screens)</li><li><span class="check">&#10003;</span> Custom design system (50+ components)</li><li><span class="check">&#10003;</span> Google OAuth authentication</li><li><span class="check">&#10003;</span> Rate limiting &amp; security headers</li><li><span class="check">&#10003;</span> Row-level security on all 23 tables</li><li><span class="check">&#10003;</span> Email service (7 templates)</li><li><span class="check">&#10003;</span> Demo mode (instant product walkthrough)</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-bottom:16px" data-i18n="trac_pilot">Launch Pilot: Clean New Orleans</h3>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+          <div><span style="font-size:24px;font-weight:800">4</span><span style="font-size:13px;color:#5A6577"> teams</span></div>
+          <div><span style="font-size:24px;font-weight:800">12</span><span style="font-size:13px;color:#5A6577"> cleaners</span></div>
+          <div><span style="font-size:24px;font-weight:800">120</span><span style="font-size:13px;color:#5A6577"> clients</span></div>
+        </div>
+        <p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="trac_pilot_d">Residential cleaning company in New Orleans, LA. $280K annual revenue. Currently running on spreadsheets and WhatsApp. Identified as ideal pilot &mdash; multi-team scheduling is their biggest pain point.</p>
+      </div>
+      <h3 style="margin-top:20px;margin-bottom:16px" data-i18n="trac_infra">Infrastructure</h3>
+      <ul style="font-size:14px;color:#8B95A5;line-height:2;list-style:none"><li><span class="check">&#10003;</span> Railway (backend + PostgreSQL)</li><li><span class="check">&#10003;</span> Cloudflare Pages (frontend CDN)</li><li><span class="check">&#10003;</span> Fully separated, standalone infrastructure</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- S10 GO-TO-MARKET -->
+<section class="slide slide-dark" id="s10">
+  <div class="topbar">
+    <div class="tag">Go-to-Market</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" data-i18n="gtm_title"><span class="teal">Land and expand</span> in bilingual markets.</h2>
+  <p class="sub" style="margin-bottom:8px" data-i18n="gtm_sub">Start where the pain is highest: Southeast US, Spanish-speaking workforce, owner-operated businesses.</p>
+  <div class="timeline">
+    <div class="timeline-item done"><div class="t-phase" style="color:#10B981" data-i18n="gtm_p0">Phase 0 &middot; Complete</div><div class="t-title" data-i18n="gtm_p0_t">Build MVP</div><div class="t-desc" data-i18n="gtm_p0_d">Product built and deployed. 91 endpoints, 20 screens, design system, demo mode. Infrastructure production-ready.</div></div>
+    <div class="timeline-item active"><div class="t-phase" data-i18n="gtm_p1">Phase 1 &middot; Q2 2026</div><div class="t-title" data-i18n="gtm_p1_t">First 10 Customers &middot; New Orleans</div><div class="t-desc" data-i18n="gtm_p1_d">Pilot with Clean New Orleans, then expand to 10 businesses. Stripe payments live. Target: $500+ MRR.</div></div>
+    <div class="timeline-item"><div class="t-phase" style="color:#8B95A5" data-i18n="gtm_p2">Phase 2 &middot; Q3-Q4 2026</div><div class="t-title" data-i18n="gtm_p2_t">100 Businesses &middot; Southeast US</div><div class="t-desc" data-i18n="gtm_p2_d">Expand to FL, TX, GA. Referral program. Content marketing in Spanish. Target: $5K MRR.</div></div>
+    <div class="timeline-item"><div class="t-phase" style="color:#8B95A5" data-i18n="gtm_p3">Phase 3 &middot; 2027</div><div class="t-title" data-i18n="gtm_p3_t">1,000 Businesses &middot; National</div><div class="t-desc" data-i18n="gtm_p3_d">Paid acquisition (Facebook/Instagram in Spanish). Cleaning supply partnerships. App Store launch. Target: $55K MRR.</div></div>
+  </div>
+  <div class="grid-3" style="margin-top:32px">
+    <div class="card"><h3 style="margin-bottom:8px" data-i18n="gtm_c1_t">Acquisition Channel</h3><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="gtm_c1_d"><strong style="color:#E8ECF1">Word of mouth</strong> is king in cleaning. Owners talk at supply stores, Facebook groups, and church. One happy customer unlocks 5 more. Referral bonus: 1 month free.</p></div>
+    <div class="card"><h3 style="margin-bottom:8px" data-i18n="gtm_c2_t">Retention Moat</h3><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="gtm_c2_d"><strong style="color:#E8ECF1">Switching cost increases monthly.</strong> Every client, schedule, team assignment, payment history. After 90 days, Xcleaners becomes the business's operating memory.</p></div>
+    <div class="card"><h3 style="margin-bottom:8px" data-i18n="gtm_c3_t">Expansion Revenue</h3><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="gtm_c3_d"><strong style="color:#E8ECF1">Natural tier upgrade.</strong> Businesses grow from 1 to 3 to 5+ teams. Built-in upsell from $29 to $99.</p></div>
+  </div>
+</section>
+
+<!-- S11 FINANCIALS -->
+<section class="slide slide-dark" id="s11">
+  <div class="topbar">
+    <div class="tag" data-i18n="tag_fin">Financials</div>
+    <div style="font-size:13px;color:#5A6577">xcleaners</div>
+  </div>
+  <h2 class="medium" data-i18n="fin_title">Path to <span class="teal">$100K ARR</span> in 24 months.</h2>
+  <div class="table-wrap" style="margin-top:32px">
+    <table>
+      <thead><tr><th data-i18n="fin_metric">Metric</th><th style="text-align:right">Month 6</th><th style="text-align:right">Month 12</th><th style="text-align:right">Month 18</th><th style="text-align:right">Month 24</th></tr></thead>
+      <tbody>
+        <tr><td style="font-weight:600" data-i18n="fin_biz">Active Businesses</td><td style="text-align:right">8</td><td style="text-align:right">30</td><td style="text-align:right">80</td><td style="text-align:right">150</td></tr>
+        <tr><td style="font-weight:600">MRR</td><td style="text-align:right">$440</td><td style="text-align:right">$1,650</td><td style="text-align:right">$4,400</td><td style="text-align:right;color:#10B981;font-weight:700">$8,250</td></tr>
+        <tr><td style="font-weight:600">ARR</td><td style="text-align:right">$5,280</td><td style="text-align:right">$19,800</td><td style="text-align:right">$52,800</td><td style="text-align:right;color:#10B981;font-weight:700">$99,000</td></tr>
+        <tr><td style="font-weight:600">ARPU</td><td style="text-align:right;color:#8B95A5" colspan="4">$55/month</td></tr>
+        <tr><td style="font-weight:600" data-i18n="fin_margin">Gross Margin</td><td style="text-align:right;color:#8B95A5" colspan="4">85%+</td></tr>
+        <tr><td style="font-weight:600">CAC Target</td><td style="text-align:right;color:#8B95A5" colspan="4">$50-80</td></tr>
+        <tr><td style="font-weight:600">LTV</td><td style="text-align:right;color:#8B95A5" colspan="4">$990 (18-month est.)</td></tr>
+        <tr><td style="font-weight:600">LTV:CAC</td><td style="text-align:right;color:#10B981;font-weight:700" colspan="4">12:1 to 20:1</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="grid-3" style="margin-top:24px">
+    <div class="highlight"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#00B0B2;font-weight:600;margin-bottom:8px" data-i18n="fin_unit_t">Unit Economics</div><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="fin_unit_d">Infrastructure cost per customer: ~$3/month. At $55 ARPU, gross margin exceeds 90% at scale.</p></div>
+    <div class="highlight"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#00B0B2;font-weight:600;margin-bottom:8px" data-i18n="fin_pay_t">Payback Period</div><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="fin_pay_d">At $65 blended CAC, payback in &lt;2 months. Negative churn expected as businesses upgrade tiers.</p></div>
+    <div class="highlight"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#00B0B2;font-weight:600;margin-bottom:8px">Break-Even</div><p style="font-size:14px;color:#8B95A5;line-height:1.7" data-i18n="fin_be_d">Estimated at ~80 active businesses ($4.4K MRR). Current burn: &lt;$500/month. With investment: ~$10K/month.</p></div>
+  </div>
+</section>
+
+<!-- S12 THE ASK -->
+<section class="slide slide-teal" id="s12">
+  <div class="topbar">
+    <div class="tag" style="color:rgba(255,255,255,.6)" data-i18n="tag_ask">The Ask</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.6)">xcleaners</div>
+  </div>
+  <div style="text-align:center;margin-bottom:40px">
+    <div style="font-size:14px;text-transform:uppercase;letter-spacing:.15em;color:rgba(255,255,255,.5);margin-bottom:12px" data-i18n="ask_round">Pre-Seed Round</div>
+    <h1 style="font-size:clamp(56px,7vw,90px);font-weight:900;color:#fff;letter-spacing:-.04em">$200K</h1>
+    <p style="font-size:18px;color:rgba(255,255,255,.7);margin-top:8px">Post-money SAFE &middot; $1M cap &middot; 20% equity</p>
+  </div>
+  <div class="grid-3" style="margin-top:16px">
+    <div style="background:rgba(255,255,255,.12);border-radius:14px;padding:28px;backdrop-filter:blur(8px)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:12px" data-i18n="ask_funds">Use of Funds (18 months)</div>
+      <ul style="font-size:15px;line-height:2.2;list-style:none;color:#fff" data-i18n="ask_funds_list"><li><strong>35%</strong> Customer acquisition &amp; sales</li><li><strong>30%</strong> Product iteration &amp; AI features</li><li><strong>20%</strong> Operations &amp; first hire</li><li><strong>15%</strong> Infrastructure &amp; legal</li></ul>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:14px;padding:28px;backdrop-filter:blur(8px)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:12px" data-i18n="ask_miles">12-Month Milestones</div>
+      <ul style="font-size:15px;line-height:2.2;list-style:none;color:#fff" data-i18n="ask_miles_list"><li>&#9679; 50 paying businesses</li><li>&#9679; $2,500+ MRR</li><li>&#9679; 2 metro areas (NOLA + Miami)</li><li>&#9679; Stripe payments &amp; auto-invoicing live</li></ul>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:14px;padding:28px;backdrop-filter:blur(8px)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:12px" data-i18n="ask_why">Why Now</div>
+      <ul style="font-size:15px;line-height:2.2;list-style:none;color:#fff" data-i18n="ask_why_list"><li>&#9679; Product built &amp; deployed</li><li>&#9679; Pilot customer identified</li><li>&#9679; Zero competitors in bilingual space</li><li>&#9679; Market growing 6.5%/year</li></ul>
+    </div>
+  </div>
+  <div style="margin-top:40px;text-align:center">
+    <div style="display:flex;justify-content:center;gap:48px;flex-wrap:wrap">
+      <div>
+        <p style="font-size:18px;color:#fff;font-weight:700">Carla Afonso</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.6)">Co-Founder &amp; CEO</p>
+        <p style="font-size:13px;color:rgba(255,255,255,.4);margin-top:4px">carla@xcleaners.app</p>
+      </div>
+      <div>
+        <p style="font-size:18px;color:#fff;font-weight:700">Luiz Junior</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.6)">Founder &amp; Lead Engineer</p>
+        <p style="font-size:13px;color:rgba(255,255,255,.4);margin-top:4px">luiz@xcleaners.app</p>
+      </div>
+      <div>
+        <p style="font-size:18px;color:#fff;font-weight:700">Luan Ferreira</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.6)">Co-Founder &amp; Engineer</p>
+        <p style="font-size:13px;color:rgba(255,255,255,.4);margin-top:4px">luan@xcleaners.app</p>
+      </div>
+    </div>
+    <p style="font-size:15px;color:rgba(255,255,255,.5);margin-top:20px">XCleaners LLC &middot; Cheyenne, WY &middot; xcleaners.app</p>
+  </div>
+</section>
+
+<!-- NAV -->
+<div class="nav">
+  <button onclick="prev()">&#8593;</button>
+  <button onclick="next()">&#8595;</button>
+</div>
+<div class="slide-counter" id="counter">01 / 12</div>
+
+<script>
+// ─── TRANSLATIONS ───
+const T={
+en:{
+confidential:"Confidential",
+cover_title:"The operating system<br>for cleaning businesses.",
+cover_sub:"One app to schedule 100+ homes, manage multiple teams, and get paid on time. Built for the 1.25 million cleaning businesses in America that still run on spreadsheets and WhatsApp.",
+cover_pill:"MVP Built &middot; Ready to Launch",
+tag_problem:"The Problem",tag_market:"Market Opportunity",tag_solution:"The Solution",tag_product:"Product",tag_comp:"Competition",tag_offer:"The Offer",tag_biz:"Business Model",tag_traction:"Traction",tag_fin:"Financials",tag_ask:"The Ask",
+prob_title:'Cleaning business owners<br>are drowning in <span class="teal">logistics.</span>',
+prob_c1_title:"Lost Every Night",prob_c1_desc:"Owners spend 3 hours every evening planning tomorrow's schedule. By morning, something has already changed. Cancellations, reschedules, new clients &mdash; all managed through text messages.",
+prob_c2_title:"Uncollected Revenue",prob_c2_desc:"Average outstanding balance per business with 120+ clients. Payments scattered across Venmo, Zelle, cash, and checks. No automated invoicing.",
+prob_c3_title:"Still on Spreadsheets",prob_c3_desc:"40% paper-based, 50% on Google Sheets or Calendar. Generic tools like Jobber cost $700/month at scale and weren't built for cleaning.",
+prob_quote:'"I spend 3 hours every night figuring out tomorrow\'s schedule. By the time I go to bed, something\'s already changed."',
+mkt_title:'A <span class="teal">$12.5 billion</span> market with<br>almost zero software penetration.',
+mkt_tam:"TAM &middot; US Residential Cleaning",mkt_tam_desc:"1.25M businesses, 99% independently owned. Growing 6.5% annually.",
+mkt_sam:"SAM &middot; Tech-Reachable SMBs",mkt_sam_desc:"200K-350K residential businesses with 1-10 teams, smartphone-equipped, ready for software.",
+mkt_som:"SOM &middot; Year 3 Target",mkt_som_desc:"15K-30K businesses in Southeast US. Bilingual markets first: FL, TX, LA, CA, NY.",
+mkt_s1:"US cleaning businesses",mkt_s2:"Annual market growth",mkt_s3:"Under 10 employees",mkt_s4:"Hispanic/Latino workforce",
+sol_title:'One app.<br>Three roles.<br><span class="teal">Zero chaos.</span>',
+sol_owner:"Business Owner",sol_owner_t:"Command Center",
+sol_owner_list:"<li>&#10003; AI-powered schedule builder</li><li>&#10003; Multi-team assignment &amp; tracking</li><li>&#10003; Client management &amp; billing</li><li>&#10003; Revenue dashboards</li><li>&#10003; One-tap schedule publishing</li>",
+sol_team:"Cleaning Team",sol_team_t:"Daily Job Board",
+sol_team_list:"<li>&#10003; Today's schedule with addresses</li><li>&#10003; One-tap GPS navigation</li><li>&#10003; Check-in / check-out with photos</li><li>&#10003; Client notes &amp; access codes</li><li>&#10003; 100% Spanish interface</li>",
+sol_home:"Homeowner",sol_home_t:"Self-Service Portal",
+sol_home_list:"<li>&#10003; Upcoming appointments</li><li>&#10003; Reschedule without calling</li><li>&#10003; Auto-pay &amp; payment history</li><li>&#10003; House preferences saved</li><li>&#10003; Completion notifications</li>",
+sol_pill1:"Works on any phone &middot; No app store needed",sol_pill2:"Offline capable",
+prod_title:"Built for how cleaning businesses <em>actually</em> work.",
+prod_f1_t:"Schedule Intelligence",prod_f1_d:"Recurring patterns (weekly, bi-weekly, monthly) auto-detected. Geographic clustering minimizes drive time. Cancellations instantly rebalance across teams.",
+prod_f2_t:"Real-Time Team Tracking",prod_f2_d:"GPS check-in/check-out. Live job status. Photo verification on completion. Owners know exactly where every team is.",
+prod_f3_t:"Built-In Payments",prod_f3_d:"Auto-generated invoices after each cleaning. Stripe-powered online payments. No more chasing Venmo or cash.",
+prod_f4_t:"Bilingual from Day One",prod_f4_d:"Not translated English &mdash; purpose-built in English and Spanish. Every screen, notification, and message works natively in both languages.",
+prod_f5_t:"Client Self-Service",prod_f5_d:"Homeowners reschedule, pay, and manage preferences without calling the owner. House access codes and instructions stay with the home.",
+prod_f6_t:"Works Everywhere",prod_f6_d:"PWA runs on any smartphone &mdash; including the $150 Samsung Galaxy most cleaning teams carry. No app store, no downloads. Offline-first.",
+comp_title:'The market is split between <span class="teal">too expensive</span><br>and <span class="amber">too limited</span>.',
+comp_sub:"No one owns the middle: affordable, cleaning-specific, and intelligent.",
+comp_th:"Feature",comp_price:"Price (at scale)",comp_specific:"Cleaning-specific",comp_ai:"AI scheduling",comp_bilingual:"Bilingual (EN/ES)",comp_route:"Route optimization",comp_oneapp:"One app, 3 roles",
+val_title:'Why cleaning businesses <span class="teal">can\'t say no.</span>',val_sub:"The value equation that makes this an irresistible offer.",
+val_dream:"Dream Outcome",val_dream_d:"Time saved from manual scheduling, invoicing, and coordination",
+val_likely:"Perceived Likelihood",val_likely_d:"MVP deployed, pilot customer identified, demo available in 60 seconds",
+val_divided:"DIVIDED BY",
+val_time:"Time to Value",val_time_d:"Sign up, import clients, publish first schedule. No training needed.",
+val_effort:"Effort &amp; Sacrifice",val_effort_d:"$29/month. No contracts. No setup fees. Cancel anytime.",
+val_math_t:"The Math",val_math_d:'Owner saves <strong style="color:#10B981">15 hours/week</strong> &times; $25/hr = <strong style="color:#10B981">$1,500/month</strong> in recovered time.<br>Xcleaners costs <strong style="color:#00B0B2">$29-99/month</strong>. That\'s a <strong style="color:#fff">15-50x ROI</strong> on day one.',
+biz_title:'Three tiers. One mission:<br><span class="teal">grow with the business.</span>',
+biz_popular:"MOST POPULAR",biz_t1_desc:"Solo cleaners &amp; small teams",biz_t2_desc:"Growing businesses, 2-5 teams",biz_t3_desc:"Operations at scale",
+biz_t1_list:"<li>&#9679; 1 team, 50 clients</li><li>&#9679; Manual scheduling</li><li>&#9679; Check-in/check-out</li><li>&#9679; Basic invoicing</li><li>&#9679; Email notifications</li>",
+biz_t2_list:'<li style="color:#E8ECF1;font-weight:500">&#10003; 3 teams, 200 clients</li><li style="color:#E8ECF1;font-weight:500">&#10003; AI-assisted scheduling</li><li style="color:#E8ECF1;font-weight:500">&#10003; Auto-invoicing</li><li style="color:#E8ECF1;font-weight:500">&#10003; Client portal</li><li style="color:#E8ECF1;font-weight:500">&#10003; SMS + push notifications</li>',
+biz_t3_list:"<li>&#9679; Unlimited teams &amp; clients</li><li>&#9679; Full AI auto-scheduling</li><li>&#9679; Stripe payments built-in</li><li>&#9679; WhatsApp integration</li><li>&#9679; Marketing website + AI chat</li>",
+biz_annual:"Annual discount (2 months free)",biz_trial:"Free trial, no credit card",
+trac_title:'Not a slide deck. <span class="teal">A working product.</span>',trac_sub:"MVP fully built and deployed. Infrastructure production-ready. Demo available in 60 seconds.",
+trac_tables:"Database Tables",trac_screens:"Production Screens",trac_portals:"User Portals",
+trac_built:"What's Built",
+trac_built_list:'<li><span class="check">&#10003;</span> Full backend (FastAPI + PostgreSQL + Redis)</li><li><span class="check">&#10003;</span> PWA frontend (3 roles, 20 screens)</li><li><span class="check">&#10003;</span> Custom design system (50+ components)</li><li><span class="check">&#10003;</span> Google OAuth authentication</li><li><span class="check">&#10003;</span> Rate limiting &amp; security headers</li><li><span class="check">&#10003;</span> Row-level security on all 23 tables</li><li><span class="check">&#10003;</span> Email service (7 templates)</li><li><span class="check">&#10003;</span> Demo mode (instant walkthrough)</li>',
+trac_pilot:"Launch Pilot: Clean New Orleans",trac_pilot_d:"Residential cleaning company in New Orleans, LA. $280K annual revenue. Currently running on spreadsheets and WhatsApp. Identified as ideal pilot &mdash; multi-team scheduling is their biggest pain point.",
+trac_infra:"Infrastructure",
+gtm_title:'<span class="teal">Land and expand</span> in bilingual markets.',gtm_sub:"Start where the pain is highest: Southeast US, Spanish-speaking workforce, owner-operated businesses.",
+gtm_p0:"Phase 0 &middot; Complete",gtm_p0_t:"Build MVP",gtm_p0_d:"Product built and deployed. 91 endpoints, 20 screens, design system, demo mode. Infrastructure production-ready.",
+gtm_p1:"Phase 1 &middot; Q2 2026",gtm_p1_t:"First 10 Customers &middot; New Orleans",gtm_p1_d:"Pilot with Clean New Orleans, then expand to 10 businesses. Stripe payments live. Target: $500+ MRR.",
+gtm_p2:"Phase 2 &middot; Q3-Q4 2026",gtm_p2_t:"100 Businesses &middot; Southeast US",gtm_p2_d:"Expand to FL, TX, GA. Referral program. Content marketing in Spanish. Target: $5K MRR.",
+gtm_p3:"Phase 3 &middot; 2027",gtm_p3_t:"1,000 Businesses &middot; National",gtm_p3_d:"Paid acquisition (Facebook/Instagram in Spanish). Cleaning supply partnerships. App Store launch. Target: $55K MRR.",
+gtm_c1_t:"Acquisition Channel",gtm_c1_d:'<strong style="color:#E8ECF1">Word of mouth</strong> is king in cleaning. Owners talk at supply stores, Facebook groups, and church. One happy customer unlocks 5 more. Referral bonus: 1 month free.',
+gtm_c2_t:"Retention Moat",gtm_c2_d:'<strong style="color:#E8ECF1">Switching cost increases monthly.</strong> Every client, schedule, team assignment, payment history. After 90 days, Xcleaners becomes the business\'s operating memory.',
+gtm_c3_t:"Expansion Revenue",gtm_c3_d:'<strong style="color:#E8ECF1">Natural tier upgrade.</strong> Businesses grow from 1 to 3 to 5+ teams. Built-in upsell from $29 to $99.',
+fin_title:'Path to <span class="teal">$100K ARR</span> in 24 months.',fin_metric:"Metric",fin_biz:"Active Businesses",fin_margin:"Gross Margin",
+fin_unit_t:"Unit Economics",fin_unit_d:"Infrastructure cost per customer: ~$3/month. At $55 ARPU, gross margin exceeds 90% at scale.",
+fin_pay_t:"Payback Period",fin_pay_d:"At $65 blended CAC, payback in &lt;2 months. Negative churn expected as businesses upgrade tiers.",
+fin_be_d:"Estimated at ~80 active businesses ($4.4K MRR). Current burn: &lt;$500/month. With investment: ~$10K/month.",
+ask_round:"Pre-Seed Round",ask_funds:"Use of Funds (18 months)",
+ask_funds_list:"<li><strong>35%</strong> Customer acquisition &amp; sales</li><li><strong>30%</strong> Product iteration &amp; AI features</li><li><strong>20%</strong> Operations &amp; first hire</li><li><strong>15%</strong> Infrastructure &amp; legal</li>",
+ask_miles:"12-Month Milestones",ask_miles_list:"<li>&#9679; 50 paying businesses</li><li>&#9679; $2,500+ MRR</li><li>&#9679; 2 metro areas (NOLA + Miami)</li><li>&#9679; Stripe payments &amp; auto-invoicing live</li>",
+ask_why:"Why Now",ask_why_list:"<li>&#9679; Product built &amp; deployed</li><li>&#9679; Pilot customer identified</li><li>&#9679; Zero competitors in bilingual space</li><li>&#9679; Market growing 6.5%/year</li>"
+},
+pt:{
+confidential:"Confidencial",
+cover_title:"O sistema operacional<br>para empresas de limpeza.",
+cover_sub:"Um app para agendar 100+ casas, gerenciar multiplas equipes e receber em dia. Feito para 1,25 milhao de empresas de limpeza nos EUA que ainda usam planilhas e WhatsApp.",
+cover_pill:"MVP Pronto &middot; Lancamento Iminente",
+tag_problem:"O Problema",tag_market:"Oportunidade de Mercado",tag_solution:"A Solucao",tag_product:"Produto",tag_comp:"Concorrencia",tag_offer:"A Oferta",tag_biz:"Modelo de Negocio",tag_traction:"Tracao",tag_fin:"Financeiro",tag_ask:"O Pedido",
+prob_title:'Donos de empresas de limpeza<br>estao afogados em <span class="teal">logistica.</span>',
+prob_c1_title:"Perdidas Toda Noite",prob_c1_desc:"Donos gastam 3 horas toda noite planejando o schedule do dia seguinte. De manha, algo ja mudou. Cancelamentos, reagendamentos, novos clientes &mdash; tudo gerenciado por mensagens de texto.",
+prob_c2_title:"Receita Nao Cobrada",prob_c2_desc:"Saldo medio em aberto por empresa com 120+ clientes. Pagamentos espalhados entre Venmo, Zelle, dinheiro e cheques. Sem faturamento automatizado.",
+prob_c3_title:"Ainda em Planilhas",prob_c3_desc:"40% no papel, 50% no Google Sheets ou Calendar. Ferramentas genericas como Jobber custam $700/mes em escala e nao foram feitas para limpeza.",
+prob_quote:'"Gasto 3 horas toda noite montando o schedule de amanha. Quando vou dormir, algo ja mudou."',
+mkt_title:'Um mercado de <span class="teal">$12,5 bilhoes</span> com<br>quase zero penetracao de software.',
+mkt_tam:"TAM &middot; Limpeza Residencial EUA",mkt_tam_desc:"1,25M empresas, 99% independentes. Crescimento de 6,5% ao ano.",
+mkt_sam:"SAM &middot; PMEs com Acesso a Tecnologia",mkt_sam_desc:"200K-350K empresas residenciais com 1-10 equipes, com smartphone, prontas para software.",
+mkt_som:"SOM &middot; Meta Ano 3",mkt_som_desc:"15K-30K empresas no Sudeste dos EUA. Mercados bilingues primeiro: FL, TX, LA, CA, NY.",
+mkt_s1:"Empresas de limpeza nos EUA",mkt_s2:"Crescimento anual do mercado",mkt_s3:"Com menos de 10 funcionarios",mkt_s4:"Forca de trabalho Hispana/Latina",
+sol_title:'Um app.<br>Tres funcoes.<br><span class="teal">Zero caos.</span>',
+sol_owner:"Dono do Negocio",sol_owner_t:"Centro de Comando",
+sol_owner_list:"<li>&#10003; Agenda inteligente com IA</li><li>&#10003; Gestao multi-equipe</li><li>&#10003; Gestao de clientes e cobranca</li><li>&#10003; Dashboards de receita</li><li>&#10003; Publicacao de agenda com 1 toque</li>",
+sol_team:"Equipe de Limpeza",sol_team_t:"Painel de Trabalho Diario",
+sol_team_list:"<li>&#10003; Agenda do dia com enderecos</li><li>&#10003; Navegacao GPS com 1 toque</li><li>&#10003; Check-in / check-out com fotos</li><li>&#10003; Notas do cliente e codigos de acesso</li><li>&#10003; Interface 100% em Espanhol</li>",
+sol_home:"Dono da Casa",sol_home_t:"Portal de Autoatendimento",
+sol_home_list:"<li>&#10003; Proximos agendamentos</li><li>&#10003; Reagendar sem ligar</li><li>&#10003; Pagamento automatico e historico</li><li>&#10003; Preferencias da casa salvas</li><li>&#10003; Notificacoes de conclusao</li>",
+sol_pill1:"Funciona em qualquer celular &middot; Sem app store",sol_pill2:"Funciona offline",
+prod_title:"Feito para como empresas de limpeza <em>realmente</em> funcionam.",
+prod_f1_t:"Inteligencia de Agenda",prod_f1_d:"Padroes recorrentes (semanal, quinzenal, mensal) detectados automaticamente. Agrupamento geografico minimiza tempo de deslocamento. Cancelamentos reequilibram equipes instantaneamente.",
+prod_f2_t:"Rastreamento de Equipe em Tempo Real",prod_f2_d:"Check-in/check-out com GPS. Status do trabalho ao vivo. Verificacao por foto na conclusao. Donos sabem onde cada equipe esta, a cada minuto.",
+prod_f3_t:"Pagamentos Integrados",prod_f3_d:"Faturas geradas automaticamente apos cada limpeza. Pagamentos online via Stripe. Sem mais correr atras de Venmo ou dinheiro.",
+prod_f4_t:"Bilingue Desde o Dia Um",prod_f4_d:"Nao e ingles traduzido &mdash; construido nativamente em ingles e espanhol. Cada tela, notificacao e mensagem funciona nos dois idiomas.",
+prod_f5_t:"Autoatendimento do Cliente",prod_f5_d:"Donos de casa reagendam, pagam e gerenciam preferencias sem ligar. Codigos de acesso e instrucoes ficam com a casa.",
+prod_f6_t:"Funciona em Todo Lugar",prod_f6_d:"PWA roda em qualquer smartphone &mdash; incluindo o Samsung Galaxy de $150 que a maioria das equipes usa. Sem app store, sem downloads. Offline-first.",
+comp_title:'O mercado esta dividido entre <span class="teal">caro demais</span><br>e <span class="amber">limitado demais</span>.',
+comp_sub:"Ninguem ocupa o meio: acessivel, especifico para limpeza e inteligente.",
+comp_th:"Recurso",comp_price:"Preco (em escala)",comp_specific:"Especifico p/ limpeza",comp_ai:"Agenda com IA",comp_bilingual:"Bilingue (EN/ES)",comp_route:"Otimizacao de rotas",comp_oneapp:"Um app, 3 funcoes",
+val_title:'Por que empresas de limpeza <span class="teal">nao conseguem dizer nao.</span>',val_sub:"A equacao de valor que torna esta oferta irresistivel.",
+val_dream:"Resultado Desejado",val_dream_d:"Tempo economizado de agendamento manual, faturamento e coordenacao",
+val_likely:"Probabilidade Percebida",val_likely_d:"MVP implantado, cliente piloto identificado, demo disponivel em 60 segundos",
+val_divided:"DIVIDIDO POR",
+val_time:"Tempo ate o Valor",val_time_d:"Cadastre-se, importe clientes, publique a primeira agenda. Sem treinamento.",
+val_effort:"Esforco e Sacrificio",val_effort_d:"$29/mes. Sem contratos. Sem taxa de setup. Cancele quando quiser.",
+val_math_t:"A Conta",val_math_d:'Dono economiza <strong style="color:#10B981">15 horas/semana</strong> &times; $25/h = <strong style="color:#10B981">$1.500/mes</strong> em tempo recuperado.<br>Xcleaners custa <strong style="color:#00B0B2">$29-99/mes</strong>. Isso e um <strong style="color:#fff">ROI de 15-50x</strong> desde o primeiro dia.',
+biz_title:'Tres planos. Uma missao:<br><span class="teal">crescer com o negocio.</span>',
+biz_popular:"MAIS POPULAR",biz_t1_desc:"Autonomos e equipes pequenas",biz_t2_desc:"Negocios em crescimento, 2-5 equipes",biz_t3_desc:"Operacoes em escala",
+biz_t1_list:"<li>&#9679; 1 equipe, 50 clientes</li><li>&#9679; Agendamento manual</li><li>&#9679; Check-in/check-out</li><li>&#9679; Faturamento basico</li><li>&#9679; Notificacoes por email</li>",
+biz_t2_list:'<li style="color:#E8ECF1;font-weight:500">&#10003; 3 equipes, 200 clientes</li><li style="color:#E8ECF1;font-weight:500">&#10003; Agenda assistida por IA</li><li style="color:#E8ECF1;font-weight:500">&#10003; Faturamento automatico</li><li style="color:#E8ECF1;font-weight:500">&#10003; Portal do cliente</li><li style="color:#E8ECF1;font-weight:500">&#10003; SMS + push notifications</li>',
+biz_t3_list:"<li>&#9679; Equipes e clientes ilimitados</li><li>&#9679; Agenda 100% automatica com IA</li><li>&#9679; Pagamentos Stripe integrados</li><li>&#9679; Integracao WhatsApp</li><li>&#9679; Site de marketing + chat IA</li>",
+biz_annual:"Desconto anual (2 meses gratis)",biz_trial:"14 dias gratis, sem cartao",
+trac_title:'Nao e um slide deck. <span class="teal">E um produto funcionando.</span>',trac_sub:"MVP totalmente construido e implantado. Infraestrutura pronta para producao. Demo disponivel em 60 segundos.",
+trac_tables:"Tabelas no Banco",trac_screens:"Telas em Producao",trac_portals:"Portais de Usuario",
+trac_built:"O que esta Construido",
+trac_built_list:'<li><span class="check">&#10003;</span> Backend completo (FastAPI + PostgreSQL + Redis)</li><li><span class="check">&#10003;</span> Frontend PWA (3 funcoes, 20 telas)</li><li><span class="check">&#10003;</span> Design system proprio (50+ componentes)</li><li><span class="check">&#10003;</span> Autenticacao Google OAuth</li><li><span class="check">&#10003;</span> Rate limiting e headers de seguranca</li><li><span class="check">&#10003;</span> Seguranca por linha em todas 23 tabelas</li><li><span class="check">&#10003;</span> Servico de email (7 templates)</li><li><span class="check">&#10003;</span> Modo demo (tour instantaneo)</li>',
+trac_pilot:"Piloto de Lancamento: Clean New Orleans",trac_pilot_d:"Empresa de limpeza residencial em New Orleans, LA. $280K de receita anual. Atualmente usa planilhas e WhatsApp. Identificada como piloto ideal &mdash; agendamento multi-equipe e sua maior dor.",
+trac_infra:"Infraestrutura",
+gtm_title:'<span class="teal">Entrar e expandir</span> em mercados bilingues.',gtm_sub:"Comecar onde a dor e maior: Sudeste dos EUA, forca de trabalho hispana, negocios operados pelo dono.",
+gtm_p0:"Fase 0 &middot; Completa",gtm_p0_t:"Construir MVP",gtm_p0_d:"Produto construido e implantado. 91 endpoints, 20 telas, design system, modo demo. Infraestrutura pronta.",
+gtm_p1:"Fase 1 &middot; Q2 2026",gtm_p1_t:"Primeiros 10 Clientes &middot; New Orleans",gtm_p1_d:"Piloto com Clean New Orleans, depois expandir para 10 empresas. Pagamentos Stripe ativos. Meta: $500+ MRR.",
+gtm_p2:"Fase 2 &middot; Q3-Q4 2026",gtm_p2_t:"100 Empresas &middot; Sudeste EUA",gtm_p2_d:"Expandir para FL, TX, GA. Programa de indicacao. Marketing de conteudo em espanhol. Meta: $5K MRR.",
+gtm_p3:"Fase 3 &middot; 2027",gtm_p3_t:"1.000 Empresas &middot; Nacional",gtm_p3_d:"Aquisicao paga (Facebook/Instagram em espanhol). Parcerias com distribuidores. Lancamento na App Store. Meta: $55K MRR.",
+gtm_c1_t:"Canal de Aquisicao",gtm_c1_d:'<strong style="color:#E8ECF1">Boca a boca</strong> e rei no setor de limpeza. Donos conversam em lojas de suprimentos, grupos do Facebook e na igreja. Um cliente satisfeito desbloqueia 5 novos. Bonus de indicacao: 1 mes gratis.',
+gtm_c2_t:"Barreira de Retencao",gtm_c2_d:'<strong style="color:#E8ECF1">Custo de troca aumenta a cada mes.</strong> Cada cliente, agenda, equipe, historico de pagamento. Apos 90 dias, Xcleaners vira a memoria operacional do negocio.',
+gtm_c3_t:"Receita de Expansao",gtm_c3_d:'<strong style="color:#E8ECF1">Upgrade natural de plano.</strong> Negocios crescem de 1 para 3 para 5+ equipes. Upsell embutido de $29 para $99.',
+fin_title:'Caminho para <span class="teal">$100K ARR</span> em 24 meses.',fin_metric:"Metrica",fin_biz:"Empresas Ativas",fin_margin:"Margem Bruta",
+fin_unit_t:"Unit Economics",fin_unit_d:"Custo de infra por cliente: ~$3/mes. Com ARPU de $55, margem bruta supera 90% em escala.",
+fin_pay_t:"Periodo de Payback",fin_pay_d:"Com CAC de $65, payback em menos de 2 meses. Churn negativo esperado conforme empresas fazem upgrade.",
+fin_be_d:"Estimado em ~80 empresas ativas ($4,4K MRR). Burn atual: &lt;$500/mes. Com investimento: ~$10K/mes.",
+ask_round:"Rodada Pre-Seed",ask_funds:"Uso dos Fundos (18 meses)",
+ask_funds_list:"<li><strong>35%</strong> Aquisicao de clientes e vendas</li><li><strong>30%</strong> Iteracao de produto e IA</li><li><strong>20%</strong> Operacoes e primeira contratacao</li><li><strong>15%</strong> Infraestrutura e juridico</li>",
+ask_miles:"Metas de 12 Meses",ask_miles_list:"<li>&#9679; 50 empresas pagantes</li><li>&#9679; $2.500+ MRR</li><li>&#9679; 2 areas metropolitanas (NOLA + Miami)</li><li>&#9679; Pagamentos Stripe e faturamento automatico</li>",
+ask_why:"Por Que Agora",ask_why_list:"<li>&#9679; Produto construido e implantado</li><li>&#9679; Cliente piloto identificado</li><li>&#9679; Zero concorrentes no espaco bilingue</li><li>&#9679; Mercado crescendo 6,5%/ano</li>"
+},
+es:{
+confidential:"Confidencial",
+cover_title:"El sistema operativo<br>para empresas de limpieza.",
+cover_sub:"Una app para programar 100+ hogares, gestionar multiples equipos y cobrar a tiempo. Hecha para los 1,25 millones de empresas de limpieza en Estados Unidos que aun usan hojas de calculo y WhatsApp.",
+cover_pill:"MVP Listo &middot; Lanzamiento Inminente",
+tag_problem:"El Problema",tag_market:"Oportunidad de Mercado",tag_solution:"La Solucion",tag_product:"Producto",tag_comp:"Competencia",tag_offer:"La Oferta",tag_biz:"Modelo de Negocio",tag_traction:"Traccion",tag_fin:"Finanzas",tag_ask:"La Propuesta",
+prob_title:'Los duenos de empresas de limpieza<br>se ahogan en <span class="teal">logistica.</span>',
+prob_c1_title:"Perdidas Cada Noche",prob_c1_desc:"Los duenos pasan 3 horas cada noche planificando el horario del dia siguiente. Por la manana, algo ya cambio. Cancelaciones, reprogramaciones, nuevos clientes &mdash; todo gestionado por mensajes de texto.",
+prob_c2_title:"Ingresos No Cobrados",prob_c2_desc:"Saldo promedio pendiente por empresa con 120+ clientes. Pagos dispersos entre Venmo, Zelle, efectivo y cheques. Sin facturacion automatizada.",
+prob_c3_title:"Aun en Hojas de Calculo",prob_c3_desc:"40% en papel, 50% en Google Sheets o Calendar. Herramientas genericas como Jobber cuestan $700/mes a escala y no fueron hechas para limpieza.",
+prob_quote:'"Paso 3 horas cada noche armando el horario de manana. Cuando me acuesto, algo ya cambio."',
+mkt_title:'Un mercado de <span class="teal">$12.500 millones</span> con<br>casi cero penetracion de software.',
+mkt_tam:"TAM &middot; Limpieza Residencial EEUU",mkt_tam_desc:"1,25M empresas, 99% independientes. Crecimiento del 6,5% anual.",
+mkt_sam:"SAM &middot; PyMEs con Acceso Tecnologico",mkt_sam_desc:"200K-350K empresas residenciales con 1-10 equipos, con smartphone, listas para software.",
+mkt_som:"SOM &middot; Meta Ano 3",mkt_som_desc:"15K-30K empresas en el Sureste de EEUU. Mercados bilingues primero: FL, TX, LA, CA, NY.",
+mkt_s1:"Empresas de limpieza en EEUU",mkt_s2:"Crecimiento anual del mercado",mkt_s3:"Con menos de 10 empleados",mkt_s4:"Fuerza laboral Hispana/Latina",
+sol_title:'Una app.<br>Tres roles.<br><span class="teal">Cero caos.</span>',
+sol_owner:"Dueno del Negocio",sol_owner_t:"Centro de Mando",
+sol_owner_list:"<li>&#10003; Agenda inteligente con IA</li><li>&#10003; Gestion multi-equipo</li><li>&#10003; Gestion de clientes y facturacion</li><li>&#10003; Dashboards de ingresos</li><li>&#10003; Publicacion de agenda con 1 toque</li>",
+sol_team:"Equipo de Limpieza",sol_team_t:"Panel de Trabajo Diario",
+sol_team_list:"<li>&#10003; Horario del dia con direcciones</li><li>&#10003; Navegacion GPS con 1 toque</li><li>&#10003; Check-in / check-out con fotos</li><li>&#10003; Notas del cliente y codigos de acceso</li><li>&#10003; Interfaz 100% en Espanol</li>",
+sol_home:"Dueno de Casa",sol_home_t:"Portal de Autoservicio",
+sol_home_list:"<li>&#10003; Proximas citas</li><li>&#10003; Reprogramar sin llamar</li><li>&#10003; Pago automatico e historial</li><li>&#10003; Preferencias del hogar guardadas</li><li>&#10003; Notificaciones de finalizacion</li>",
+sol_pill1:"Funciona en cualquier celular &middot; Sin app store",sol_pill2:"Funciona sin conexion",
+prod_title:"Hecho para como las empresas de limpieza <em>realmente</em> trabajan.",
+prod_f1_t:"Inteligencia de Agenda",prod_f1_d:"Patrones recurrentes (semanal, quincenal, mensual) detectados automaticamente. Agrupacion geografica minimiza tiempo de desplazamiento. Las cancelaciones reequilibran equipos al instante.",
+prod_f2_t:"Rastreo de Equipos en Tiempo Real",prod_f2_d:"Check-in/check-out con GPS. Estado del trabajo en vivo. Verificacion por foto al completar. Los duenos saben donde esta cada equipo, cada minuto.",
+prod_f3_t:"Pagos Integrados",prod_f3_d:"Facturas generadas automaticamente despues de cada limpieza. Pagos en linea via Stripe. Sin mas perseguir Venmo o efectivo.",
+prod_f4_t:"Bilingue Desde el Dia Uno",prod_f4_d:"No es ingles traducido &mdash; construido nativamente en ingles y espanol. Cada pantalla, notificacion y mensaje funciona en ambos idiomas.",
+prod_f5_t:"Autoservicio del Cliente",prod_f5_d:"Los duenos de casa reprograman, pagan y gestionan preferencias sin llamar. Codigos de acceso e instrucciones quedan con el hogar.",
+prod_f6_t:"Funciona en Todas Partes",prod_f6_d:"PWA funciona en cualquier smartphone &mdash; incluyendo el Samsung Galaxy de $150 que la mayoria de los equipos usa. Sin app store, sin descargas. Offline-first.",
+comp_title:'El mercado esta dividido entre <span class="teal">demasiado caro</span><br>y <span class="amber">demasiado limitado</span>.',
+comp_sub:"Nadie ocupa el medio: accesible, especifico para limpieza e inteligente.",
+comp_th:"Caracteristica",comp_price:"Precio (a escala)",comp_specific:"Especifico p/ limpieza",comp_ai:"Agenda con IA",comp_bilingual:"Bilingue (EN/ES)",comp_route:"Optimizacion de rutas",comp_oneapp:"Una app, 3 roles",
+val_title:'Por que las empresas de limpieza <span class="teal">no pueden decir que no.</span>',val_sub:"La ecuacion de valor que hace esta oferta irresistible.",
+val_dream:"Resultado Deseado",val_dream_d:"Tiempo ahorrado en programacion manual, facturacion y coordinacion",
+val_likely:"Probabilidad Percibida",val_likely_d:"MVP desplegado, cliente piloto identificado, demo disponible en 60 segundos",
+val_divided:"DIVIDIDO POR",
+val_time:"Tiempo al Valor",val_time_d:"Registrese, importe clientes, publique su primera agenda. Sin capacitacion.",
+val_effort:"Esfuerzo y Sacrificio",val_effort_d:"$29/mes. Sin contratos. Sin cuota de inicio. Cancele cuando quiera.",
+val_math_t:"Las Cuentas",val_math_d:'El dueno ahorra <strong style="color:#10B981">15 horas/semana</strong> &times; $25/h = <strong style="color:#10B981">$1.500/mes</strong> en tiempo recuperado.<br>Xcleaners cuesta <strong style="color:#00B0B2">$29-99/mes</strong>. Eso es un <strong style="color:#fff">ROI de 15-50x</strong> desde el primer dia.',
+biz_title:'Tres planes. Una mision:<br><span class="teal">crecer con el negocio.</span>',
+biz_popular:"MAS POPULAR",biz_t1_desc:"Autonomos y equipos pequenos",biz_t2_desc:"Negocios en crecimiento, 2-5 equipos",biz_t3_desc:"Operaciones a escala",
+biz_t1_list:"<li>&#9679; 1 equipo, 50 clientes</li><li>&#9679; Programacion manual</li><li>&#9679; Check-in/check-out</li><li>&#9679; Facturacion basica</li><li>&#9679; Notificaciones por email</li>",
+biz_t2_list:'<li style="color:#E8ECF1;font-weight:500">&#10003; 3 equipos, 200 clientes</li><li style="color:#E8ECF1;font-weight:500">&#10003; Agenda asistida por IA</li><li style="color:#E8ECF1;font-weight:500">&#10003; Facturacion automatica</li><li style="color:#E8ECF1;font-weight:500">&#10003; Portal del cliente</li><li style="color:#E8ECF1;font-weight:500">&#10003; SMS + push notifications</li>',
+biz_t3_list:"<li>&#9679; Equipos y clientes ilimitados</li><li>&#9679; Agenda 100% automatica con IA</li><li>&#9679; Pagos Stripe integrados</li><li>&#9679; Integracion WhatsApp</li><li>&#9679; Sitio web de marketing + chat IA</li>",
+biz_annual:"Descuento anual (2 meses gratis)",biz_trial:"14 dias gratis, sin tarjeta",
+trac_title:'No es un slide deck. <span class="teal">Es un producto funcionando.</span>',trac_sub:"MVP totalmente construido y desplegado. Infraestructura lista para produccion. Demo disponible en 60 segundos.",
+trac_tables:"Tablas en Base de Datos",trac_screens:"Pantallas en Produccion",trac_portals:"Portales de Usuario",
+trac_built:"Lo que esta Construido",
+trac_built_list:'<li><span class="check">&#10003;</span> Backend completo (FastAPI + PostgreSQL + Redis)</li><li><span class="check">&#10003;</span> Frontend PWA (3 roles, 20 pantallas)</li><li><span class="check">&#10003;</span> Design system propio (50+ componentes)</li><li><span class="check">&#10003;</span> Autenticacion Google OAuth</li><li><span class="check">&#10003;</span> Rate limiting y headers de seguridad</li><li><span class="check">&#10003;</span> Seguridad por fila en las 23 tablas</li><li><span class="check">&#10003;</span> Servicio de email (7 templates)</li><li><span class="check">&#10003;</span> Modo demo (tour instantaneo)</li>',
+trac_pilot:"Piloto de Lanzamiento: Clean New Orleans",trac_pilot_d:"Empresa de limpieza residencial en New Orleans, LA. $280K de ingresos anuales. Actualmente usa hojas de calculo y WhatsApp. Identificada como piloto ideal &mdash; la programacion multi-equipo es su mayor dolor.",
+trac_infra:"Infraestructura",
+gtm_title:'<span class="teal">Entrar y expandir</span> en mercados bilingues.',gtm_sub:"Empezar donde el dolor es mayor: Sureste de EEUU, fuerza laboral hispana, negocios operados por el dueno.",
+gtm_p0:"Fase 0 &middot; Completa",gtm_p0_t:"Construir MVP",gtm_p0_d:"Producto construido y desplegado. 91 endpoints, 20 pantallas, design system, modo demo. Infraestructura lista.",
+gtm_p1:"Fase 1 &middot; Q2 2026",gtm_p1_t:"Primeros 10 Clientes &middot; New Orleans",gtm_p1_d:"Piloto con Clean New Orleans, luego expandir a 10 empresas. Pagos Stripe activos. Meta: $500+ MRR.",
+gtm_p2:"Fase 2 &middot; Q3-Q4 2026",gtm_p2_t:"100 Empresas &middot; Sureste EEUU",gtm_p2_d:"Expandir a FL, TX, GA. Programa de referidos. Marketing de contenido en espanol. Meta: $5K MRR.",
+gtm_p3:"Fase 3 &middot; 2027",gtm_p3_t:"1.000 Empresas &middot; Nacional",gtm_p3_d:"Adquisicion paga (Facebook/Instagram en espanol). Alianzas con distribuidores. Lanzamiento en App Store. Meta: $55K MRR.",
+gtm_c1_t:"Canal de Adquisicion",gtm_c1_d:'<strong style="color:#E8ECF1">El boca a boca</strong> es rey en limpieza. Los duenos hablan en tiendas de suministros, grupos de Facebook y la iglesia. Un cliente feliz desbloquea 5 mas. Bono de referido: 1 mes gratis.',
+gtm_c2_t:"Barrera de Retencion",gtm_c2_d:'<strong style="color:#E8ECF1">El costo de cambio aumenta cada mes.</strong> Cada cliente, horario, equipo, historial de pago. Despues de 90 dias, Xcleaners se convierte en la memoria operativa del negocio.',
+gtm_c3_t:"Ingresos por Expansion",gtm_c3_d:'<strong style="color:#E8ECF1">Upgrade natural de plan.</strong> Los negocios crecen de 1 a 3 a 5+ equipos. Upsell integrado de $29 a $99.',
+fin_title:'Camino a <span class="teal">$100K ARR</span> en 24 meses.',fin_metric:"Metrica",fin_biz:"Empresas Activas",fin_margin:"Margen Bruto",
+fin_unit_t:"Unit Economics",fin_unit_d:"Costo de infra por cliente: ~$3/mes. Con ARPU de $55, margen bruto supera el 90% a escala.",
+fin_pay_t:"Periodo de Payback",fin_pay_d:"Con CAC de $65, payback en menos de 2 meses. Churn negativo esperado conforme las empresas hacen upgrade.",
+fin_be_d:"Estimado en ~80 empresas activas ($4,4K MRR). Burn actual: &lt;$500/mes. Con inversion: ~$10K/mes.",
+ask_round:"Ronda Pre-Seed",ask_funds:"Uso de Fondos (18 meses)",
+ask_funds_list:"<li><strong>35%</strong> Adquisicion de clientes y ventas</li><li><strong>30%</strong> Iteracion de producto e IA</li><li><strong>20%</strong> Operaciones y primera contratacion</li><li><strong>15%</strong> Infraestructura y legal</li>",
+ask_miles:"Metas a 12 Meses",ask_miles_list:"<li>&#9679; 50 empresas pagando</li><li>&#9679; $2.500+ MRR</li><li>&#9679; 2 areas metropolitanas (NOLA + Miami)</li><li>&#9679; Pagos Stripe y facturacion automatica</li>",
+ask_why:"Por Que Ahora",ask_why_list:"<li>&#9679; Producto construido y desplegado</li><li>&#9679; Cliente piloto identificado</li><li>&#9679; Cero competidores en espacio bilingue</li><li>&#9679; Mercado creciendo 6,5%/ano</li>"
+}
+};
+
+let currentLang='en';
+function setLang(lang){
+  currentLang=lang;
+  document.documentElement.lang=lang;
+  document.querySelectorAll('.lang-switch button').forEach(b=>{b.classList.toggle('active',b.textContent.trim()===lang.toUpperCase())});
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const key=el.getAttribute('data-i18n');
+    if(T[lang]&&T[lang][key])el.innerHTML=T[lang][key];
+  });
+}
+
+// ─── NAVIGATION ───
+const slides=document.querySelectorAll('.slide');
+const total=slides.length;
+const progress=document.getElementById('progress');
+const counter=document.getElementById('counter');
+let current=0;
+function updateUI(){const n=current+1;counter.textContent=String(n).padStart(2,'0')+' / '+String(total).padStart(2,'0');progress.style.width=((n/total)*100)+'%'}
+function goTo(i){if(i<0||i>=total)return;current=i;slides[i].scrollIntoView({behavior:'smooth'});updateUI()}
+function next(){goTo(current+1)}function prev(){goTo(current-1)}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='ArrowRight'||e.key===' ')next();if(e.key==='ArrowUp'||e.key==='ArrowLeft')prev();if(e.key==='Home')goTo(0);if(e.key==='End')goTo(total-1)});
+let scrollTimeout;window.addEventListener('scroll',()=>{clearTimeout(scrollTimeout);scrollTimeout=setTimeout(()=>{const vh=window.innerHeight;const idx=Math.round(window.scrollY/vh);if(idx!==current&&idx>=0&&idx<total){current=idx;updateUI()}},100)});
+updateUI();
+</script>
+</body>
+</html>

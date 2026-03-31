@@ -267,6 +267,11 @@ if _cleaning_dir.exists():
             cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position")
             return {"results": results, "columns": [r["column_name"] for r in cols]}
 
+    # Pitch deck (investor presentation)
+    @app.get("/pitch", tags=["Frontend"], include_in_schema=False)
+    async def serve_pitch():
+        return FileResponse(str(_frontend_dir / "pitch.html"), media_type="text/html")
+
     # SPA catch-all: serve app.html for all non-API, non-static paths
     # This MUST be the last route registered
     @app.get("/{path:path}", tags=["Frontend"], include_in_schema=False)
