@@ -13,6 +13,30 @@ from typing import Optional
 
 from app.database import Database
 from app.modules.cleaning.middleware.plan_guard import check_limit
+from app.security import encrypt_data, decrypt_data
+
+# H-3 FIX: Access codes that must be encrypted at rest
+_SENSITIVE_FIELDS = {"lockbox_code", "alarm_code", "gate_code", "garage_code"}
+
+
+def _encrypt_sensitive_fields(data: dict, business_id: str) -> dict:
+    """Encrypt access codes before storing in DB."""
+    for field in _SENSITIVE_FIELDS:
+        if field in data and data[field]:
+            data[field] = encrypt_data(str(data[field]), business_id).decode("utf-8")
+    return data
+
+
+def _decrypt_sensitive_fields(row_dict: dict, business_id: str) -> dict:
+    """Decrypt access codes when reading from DB."""
+    for field in _SENSITIVE_FIELDS:
+        val = row_dict.get(field)
+        if val and isinstance(val, str) and len(val) > 60:
+            try:
+                row_dict[field] = decrypt_data(val.encode("utf-8"), business_id)
+            except Exception:
+                pass  # Return as-is if decryption fails (legacy plaintext data)
+    return row_dict
 
 logger = logging.getLogger("xcleaners.client_service")
 
@@ -109,6 +133,9 @@ async def create_client(
     insert_data = {k: v for k, v in data.items() if k in valid_columns and v is not None}
     insert_data["business_id"] = business_id
 
+    # H-3: Encrypt access codes before storing
+    insert_data = _encrypt_sensitive_fields(insert_data, business_id)
+
     columns = list(insert_data.keys())
     values = list(insert_data.values())
     placeholders = [f"${i+1}" for i in range(len(columns))]
@@ -120,7 +147,8 @@ async def create_client(
         *values,
     )
 
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    return _decrypt_sensitive_fields(result, business_id)
 
 
 async def get_client(
@@ -140,6 +168,7 @@ async def get_client(
         return None
 
     result = _row_to_dict(row)
+    result = _decrypt_sensitive_fields(result, business_id)
 
     # Active schedules count
     sched_count = await db.pool.fetchval(
@@ -186,6 +215,9 @@ async def update_client(
     if not update_data:
         # Nothing to update, just return current
         return await get_client(db, business_id, client_id)
+
+    # H-3: Encrypt access codes before storing
+    update_data = _encrypt_sensitive_fields(update_data, business_id)
 
     # NOTE: 'paused' and 'former' are now valid DB statuses (migration 018).
     # No mapping needed — values pass through directly.

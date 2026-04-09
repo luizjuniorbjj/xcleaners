@@ -144,16 +144,24 @@ class BusinessContextMiddleware(BaseHTTPMiddleware):
             # Store in request state for downstream access
             request.state.business_id = business_id
 
-            # Set PostgreSQL session variable for RLS
+            # C-2 FIX (2026-04-09): Acquire a connection, set RLS, and keep it
+            # in request.state for the entire request lifecycle.
+            # Previous code acquired a connection, set RLS, then immediately
+            # returned it to the pool — the route handler got a DIFFERENT
+            # connection where RLS was never set.
             try:
                 from app.database import get_db_pool
                 pool = await get_db_pool()
                 if pool:
-                    async with pool.acquire() as conn:
-                        await conn.execute(
-                            "SELECT set_config('app.current_business_id', $1, true)",
-                            str(business_id),
-                        )
+                    conn = await pool.acquire()
+                    await conn.execute(
+                        "SELECT set_config('app.current_business_id', $1, true)",
+                        str(business_id),
+                    )
+                    # Store connection in request state — route handlers can
+                    # access it via request.state.rls_conn
+                    request.state.rls_conn = conn
+                    request.state._rls_pool = pool
             except Exception as exc:
                 logger.warning(
                     "[BIZ_CTX] Failed to set RLS context for %s: %s",
@@ -162,4 +170,20 @@ class BusinessContextMiddleware(BaseHTTPMiddleware):
         else:
             request.state.business_id = None
 
-        return await call_next(request)
+        try:
+            response = await call_next(request)
+        finally:
+            # Release the RLS connection back to the pool after request completes
+            rls_conn = getattr(request.state, "rls_conn", None)
+            rls_pool = getattr(request.state, "_rls_pool", None)
+            if rls_conn and rls_pool:
+                try:
+                    # Reset the session variable before returning to pool
+                    await rls_conn.execute(
+                        "SELECT set_config('app.current_business_id', '', true)"
+                    )
+                except Exception:
+                    pass
+                await rls_pool.release(rls_conn)
+
+        return response

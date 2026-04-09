@@ -31,7 +31,7 @@ httpx==0.26.0
 resend==2.0.0
 
 # Image Processing
-Pillow==10.0.0
+Pillow>=11.0.0
 
 # Push Notifications
 pywebpush==1.14.1

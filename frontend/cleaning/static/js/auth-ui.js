@@ -245,13 +245,7 @@ window.AuthUI = {
   /**
    * Handle email/password login
    */
-  // Demo accounts for UI testing (bypass API when DB is unavailable)
-  _demoAccounts: {
-    'superadmin@xcleaners.app': { password: 'admin123', role: 'super_admin', name: 'Platform Admin' },
-    'admin@xcleaners.app':    { password: 'admin123', role: 'owner',     name: 'Admin Xcleaners' },
-    'cleaner@xcleaners.app':  { password: 'admin123', role: 'cleaner',   name: 'Maria Santos' },
-    'donocasa@xcleaners.app': { password: 'admin123', role: 'homeowner', name: 'John Smith' },
-  },
+  // SECURITY FIX C-1: Demo credentials removed from client-side JS (2026-04-09)
 
   async handleLogin(event) {
     event.preventDefault();
@@ -265,51 +259,7 @@ window.AuthUI = {
     submitBtn.classList.add('cc-btn-loading');
     submitBtn.textContent = 'Signing in...';
 
-    // Check demo accounts first (works without DB)
-    const demo = this._demoAccounts[email];
-    if (demo && password === demo.password) {
-      console.log(`[Xcleaners] Demo login: ${demo.role} (${demo.name})`);
-      Xcleaners._user = { id: 'demo-' + demo.role, email: email, nome: demo.name, name: demo.name };
-      Xcleaners._roles = [{ role: demo.role, business_slug: 'clean-new-orleans', plan: 'maximum', business_name: 'Clean New Orleans' }];
-      Xcleaners._currentRole = demo.role;
-      Xcleaners._currentSlug = 'clean-new-orleans';
-      Xcleaners._currentPlan = 'maximum';
-      CleanAPI.init(Xcleaners._currentSlug);
-      localStorage.setItem('cc_current_role', demo.role);
-      localStorage.setItem('cc_slug', 'clean-new-orleans');
-      // Save demo session for page refresh persistence
-      localStorage.setItem('cc_demo_session', JSON.stringify({
-        user: Xcleaners._user,
-        roles: Xcleaners._roles,
-        role: demo.role,
-        slug: 'clean-new-orleans',
-        plan: 'maximum',
-      }));
-      if (typeof I18n !== 'undefined') await I18n.init();
-      Xcleaners._renderShell();
-      // Set hash to default route BEFORE router init to prevent auth redirect
-      const defaultRoute = demo.role === 'super_admin' ? '/admin'
-        : demo.role === 'owner' ? '/dashboard'
-        : demo.role === 'homeowner' ? '/my-bookings'
-        : '/today';
-      window.location.pathname = defaultRoute;
-      // Init router (will see the correct hash now)
-      CleanRouter.init(demo.role, 'maximum');
-      // Force display AFTER router init (in case router tried to show auth)
-      document.getElementById('auth-container').style.display = 'none';
-      document.getElementById('main-layout').style.display = 'flex';
-      document.getElementById('loading-screen').style.display = 'none';
-      // Navigate to trigger view render
-      CleanRouter.navigate(defaultRoute);
-      Xcleaners._initPullToRefresh();
-      Xcleaners._initialized = true;
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('cc-btn-loading');
-      submitBtn.textContent = 'Sign In';
-      return false;
-    }
-
-    // Real login via API
+    // Login via API
     try {
       const resp = await fetch(`${window.location.origin}/auth/login`, {
         method: 'POST',

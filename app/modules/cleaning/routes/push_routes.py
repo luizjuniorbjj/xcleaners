@@ -47,7 +47,7 @@ class PushSubscription(BaseModel):
 async def push_subscribe(
     slug: str,
     body: PushSubscription,
-    user: dict = Depends(require_role("any")),
+    user: dict = Depends(require_role("owner", "homeowner", "team_lead", "cleaner")),
     db: Database = Depends(get_db),
 ):
     """
@@ -113,7 +113,7 @@ async def push_subscribe(
 async def push_unsubscribe(
     slug: str,
     body: PushSubscription,
-    user: dict = Depends(require_role("any")),
+    user: dict = Depends(require_role("owner", "homeowner", "team_lead", "cleaner")),
     db: Database = Depends(get_db),
 ):
     """
@@ -144,7 +144,7 @@ async def push_unsubscribe(
 @router.get("/push/vapid-key")
 async def get_vapid_key(
     slug: str,
-    user: dict = Depends(require_role("any")),
+    user: dict = Depends(require_role("owner", "homeowner", "team_lead", "cleaner")),
 ):
     """
     Return the VAPID public key for the client to use when subscribing

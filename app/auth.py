@@ -417,60 +417,10 @@ async def logout(current_user: dict = Depends(get_current_user), db: Database = 
 
 
 # ============================================
-# DEV LOGIN (DEBUG ONLY — disabled in production)
+# DEV LOGIN — REMOVED (C-5 security fix, 2026-04-09)
+# Risk: bypassed all auth when DEBUG=True, could be exploited if misconfigured in production.
+# If needed for local dev, re-implement with DEV_LOGIN_SECRET env var check.
 # ============================================
-
-class DevLoginRequest(BaseModel):
-    email: EmailStr
-
-
-@router.post("/dev-login", response_model=TokenResponse)
-async def dev_login(request: DevLoginRequest, db: Database = Depends(get_db)):
-    """
-    Dev-only login: bypasses password/OAuth for local testing.
-    Only available when DEBUG=True. NEVER enable in production.
-    """
-    if not DEBUG:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    email = request.email
-    user = await db.get_user_by_email(email)
-
-    if not user:
-        # Create user on the fly for dev
-        role = "admin" if email in ADMIN_EMAILS else "lead"
-        user = await db.create_user(
-            email=email,
-            hashed_password=hash_password("dev-only-password"),
-            nome=email.split("@")[0],
-        )
-        await db.create_user_profile(
-            user_id=str(user["id"]),
-            nome=email.split("@")[0]
-        )
-        # Set role if admin
-        if role == "admin":
-            await db.update_user_role(str(user["id"]), "admin")
-            user["role"] = "admin"
-        logger.info(f"[DEV-LOGIN] Created {role} user: {email}")
-
-    access_token = create_access_token(
-        user["id"], user["email"], role=user.get("role", "lead")
-    )
-    refresh_token = create_refresh_token(user["id"])
-
-    await db.log_audit(
-        user_id=str(user["id"]),
-        action="dev_login",
-        details={"warning": "DEBUG mode only"}
-    )
-
-    logger.info(f"[DEV-LOGIN] Logged in as {email} (role={user.get('role', 'lead')})")
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token
-    )
 
 
 # ============================================
