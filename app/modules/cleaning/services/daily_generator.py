@@ -18,6 +18,7 @@ import json
 import logging
 import os
 from datetime import date, time, timedelta
+from decimal import Decimal
 from typing import Optional
 
 from app.database import Database
@@ -32,6 +33,13 @@ from app.modules.cleaning.services.conflict_resolver import (
 )
 from app.modules.cleaning.services.recurrence_engine import bulk_advance
 from app.modules.cleaning.services._type_helpers import to_time
+# Sprint D Track A (AC2): delegate booking persistence to booking_service so
+# recurring bookings pass through pricing_engine (formula + extras + discount
+# + adjustment + tax + snapshot). Closes Smith C1 M2 + R9.
+from app.modules.cleaning.services.booking_service import (
+    create_booking_with_pricing,
+)
+from app.modules.cleaning.services.pricing_engine import PricingConfigError
 
 logger = logging.getLogger("xcleaners.daily_generator")
 
@@ -75,17 +83,47 @@ async def _collect_jobs(
     db: Database,
     business_id: str,
     target_date: date,
-) -> list[dict]:
+) -> tuple[list[dict], list[dict], int]:
     """
     Collect all jobs to assign for target_date:
-      a. Recurring schedules whose frequency matches target_date
+      a. Recurring schedules whose frequency matches target_date (SKIP filtered)
       b. Manual one-off bookings already created for target_date
     Excludes bookings already confirmed/in_progress for the date.
+
+    Sprint D Track A (AC3 + AC6):
+      - Exposes pricing inputs from schedule (frequency_id, adjustment_amount,
+        adjustment_reason, location_id, service_tier, schedule_extras[]) so
+        _persist_assignments can delegate to booking_service.create_booking_with_pricing
+      - Filters out schedules with matching cleaning_schedule_skips row
+
+    Returns:
+        Tuple of (jobs, matched_schedules, skipped_by_skip_table_count)
     """
     jobs = []
 
-    # a. Recurring schedules due on target_date
-    # Query all active schedules with next_occurrence <= target_date
+    # Track A AC6: count schedules that WOULD match but have a skip for this date.
+    # Observability — reported in summary + endpoint response.
+    skipped_count = await db.pool.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM cleaning_client_schedules cs
+        WHERE cs.business_id = $1
+          AND cs.status = 'active'
+          AND cs.next_occurrence IS NOT NULL
+          AND cs.next_occurrence <= $2
+          AND EXISTS (
+              SELECT 1 FROM cleaning_schedule_skips ss
+              WHERE ss.schedule_id = cs.id AND ss.skip_date = $2
+          )
+        """,
+        business_id,
+        target_date,
+    ) or 0
+
+    # a. Recurring schedules due on target_date (NOT filtered by skip)
+    # Track A AC3: SELECT expanded to include pricing inputs (frequency_id,
+    # adjustment_amount, adjustment_reason, location_id, service_tier).
+    # Track A AC6: WHERE NOT EXISTS filters out skip dates.
     schedules = await db.pool.fetch(
         """
         SELECT
@@ -95,10 +133,13 @@ async def _collect_jobs(
             cs.preferred_team_id, cs.agreed_price,
             cs.estimated_duration_minutes, cs.min_team_size,
             cs.next_occurrence, cs.notes, cs.created_at,
+            cs.frequency_id, cs.adjustment_amount, cs.adjustment_reason,
+            cs.location_id,
             c.first_name, c.last_name,
             c.address_line1, c.city, c.state, c.zip_code,
             c.latitude, c.longitude,
-            s.name AS service_name
+            s.name AS service_name,
+            s.tier AS service_tier
         FROM cleaning_client_schedules cs
         JOIN cleaning_clients c ON c.id = cs.client_id
         LEFT JOIN cleaning_services s ON s.id = cs.service_id
@@ -106,18 +147,44 @@ async def _collect_jobs(
           AND cs.status = 'active'
           AND cs.next_occurrence IS NOT NULL
           AND cs.next_occurrence <= $2
+          AND NOT EXISTS (
+              SELECT 1 FROM cleaning_schedule_skips ss
+              WHERE ss.schedule_id = cs.id AND ss.skip_date = $2
+          )
         ORDER BY cs.preferred_time_start ASC NULLS LAST
         """,
         business_id,
         target_date,
     )
 
+    # Track A AC3: fetch schedule-level extras (template) in one query,
+    # group by schedule_id in Python. Pricing_engine will snapshot these
+    # into cleaning_booking_extras at booking creation time.
+    schedule_ids = [str(row["schedule_id"]) for row in schedules]
+    extras_by_schedule: dict[str, list[dict]] = {}
+    if schedule_ids:
+        extras_rows = await db.pool.fetch(
+            """
+            SELECT schedule_id, extra_id, qty
+            FROM cleaning_client_schedule_extras
+            WHERE schedule_id = ANY($1::uuid[])
+            """,
+            schedule_ids,
+        )
+        for row in extras_rows:
+            sid = str(row["schedule_id"])
+            extras_by_schedule.setdefault(sid, []).append({
+                "extra_id": str(row["extra_id"]),
+                "qty": row["qty"] or 1,
+            })
+
     matched_schedules = []
     for row in schedules:
         sched = dict(row)
-        # Run frequency matcher to double-check
+        # Run frequency matcher to double-check (next_occurrence advanced
+        # prematurely can cause false positives; matcher is source of truth)
         if matches_date(sched, target_date):
-            # Check if a booking already exists for this schedule + date
+            # Check if a booking already exists for this schedule + date (confirmed)
             existing = await db.pool.fetchval(
                 """
                 SELECT id FROM cleaning_bookings
@@ -135,9 +202,11 @@ async def _collect_jobs(
             if existing:
                 continue  # Already confirmed, skip
 
+            schedule_id_str = str(sched["schedule_id"])
+
             jobs.append({
                 "source": "recurring",
-                "schedule_id": str(sched["schedule_id"]),
+                "schedule_id": schedule_id_str,
                 "client_id": str(sched["client_id"]),
                 "service_id": str(sched["service_id"]),
                 "client_name": f"{sched['first_name'] or ''} {sched['last_name'] or ''}".strip(),
@@ -156,6 +225,13 @@ async def _collect_jobs(
                 "longitude": float(sched["longitude"]) if sched["longitude"] else None,
                 "notes": sched["notes"],
                 "priority": 1,  # Recurring = higher priority
+                # Sprint D Track A — pricing inputs from schedule (AC3)
+                "frequency_id": str(sched["frequency_id"]) if sched.get("frequency_id") else None,
+                "adjustment_amount": sched.get("adjustment_amount") or 0,
+                "adjustment_reason": sched.get("adjustment_reason"),
+                "location_id": str(sched["location_id"]) if sched.get("location_id") else None,
+                "service_tier": sched.get("service_tier"),
+                "schedule_extras": extras_by_schedule.get(schedule_id_str, []),
             })
             matched_schedules.append(sched)
 
@@ -220,8 +296,14 @@ async def _collect_jobs(
         "[SCHEDULE] Collected %d jobs for %s (recurring: %d, manual: %d)",
         len(jobs), target_date, len(matched_schedules), len(manual_bookings),
     )
+    # Sprint D Track A AC7: observability for skip table usage
+    if skipped_count:
+        logger.info(
+            "[RECURRING] Scanned schedules for %s — %d filtered by cleaning_schedule_skips",
+            target_date, skipped_count,
+        )
 
-    return jobs, matched_schedules
+    return jobs, matched_schedules, skipped_count
 
 
 # ============================================
@@ -604,22 +686,39 @@ async def _persist_assignments(
     business_id: str,
     target_date: date,
     assigned: list[dict],
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
     """
     Create or update cleaning_bookings for all assignments.
     Idempotent: replaces unconfirmed bookings, preserves confirmed ones.
 
+    Sprint D Track A (AC2): recurring path delegates to
+    booking_service.create_booking_with_pricing so every recurring booking
+    passes through pricing_engine — price_snapshot + tax + discount + extras
+    snapshot are all materialized correctly. Closes Smith C1 M2 + R9.
+
+    Manual (one-off) path unchanged — manual bookings are created elsewhere
+    (POST /bookings endpoint) which already integrates pricing.
+
+    For recurring path with existing unconfirmed booking: DELETE + recreate
+    (Smith L2) — guarantees fresh pricing snapshot if schedule extras/
+    adjustment/frequency changed since last generation. Booking id changes,
+    but no external FK references recurring-generated unconfirmed bookings.
+
     Returns:
-        List of booking records with IDs
+        Tuple of (persisted, pricing_failures):
+          - persisted: list of booking assignment dicts with booking_id set
+          - pricing_failures: [{schedule_id, reason}] for schedules skipped
+            due to PricingConfigError (e.g. service missing tier/BR/BA)
     """
     persisted = []
+    pricing_failures: list[dict] = []
 
     for assignment in assigned:
-        # Check if booking already exists (from recurring schedule)
         booking_id = assignment.get("booking_id")
 
         if booking_id:
-            # Manual booking — update team assignment
+            # Manual booking — already has pricing snapshot (created via
+            # POST /bookings with booking_service). Just update team assignment.
             await db.pool.execute(
                 """
                 UPDATE cleaning_bookings
@@ -635,78 +734,103 @@ async def _persist_assignments(
                 to_time(assignment["scheduled_end"]),
             )
             assignment["booking_id"] = booking_id
-        else:
-            # Recurring schedule — check for existing unconfirmed booking
-            existing = await db.pool.fetchval(
-                """
-                SELECT id FROM cleaning_bookings
-                WHERE business_id = $1
-                  AND client_id = $2
-                  AND scheduled_date = $3
-                  AND recurring_schedule_id = $4
-                  AND status NOT IN ('confirmed', 'in_progress', 'completed')
-                """,
-                business_id,
-                assignment["client_id"],
-                target_date,
-                assignment.get("schedule_id"),
+            persisted.append(assignment)
+            continue
+
+        # Recurring schedule — delegate to booking_service (Track A AC2)
+        schedule_id = assignment.get("schedule_id")
+
+        # Check for existing unconfirmed booking for this (schedule, date)
+        existing = await db.pool.fetchval(
+            """
+            SELECT id FROM cleaning_bookings
+            WHERE business_id = $1
+              AND client_id = $2
+              AND scheduled_date = $3
+              AND recurring_schedule_id = $4
+              AND status NOT IN ('confirmed', 'in_progress', 'completed')
+            """,
+            business_id,
+            assignment["client_id"],
+            target_date,
+            schedule_id,
+        )
+
+        # Smith L2: delete+recreate ensures fresh pricing snapshot
+        # (extras/adjustment/frequency may have changed since last generation).
+        # Booking_id changes but no external FK references unconfirmed recurring
+        # bookings — verified 2026-04-16 during Track A audit.
+        if existing:
+            await db.pool.execute(
+                "DELETE FROM cleaning_bookings WHERE id = $1",
+                existing,
             )
 
-            if existing:
-                # Update existing unconfirmed booking
-                await db.pool.execute(
-                    """
-                    UPDATE cleaning_bookings
-                    SET team_id = $2, scheduled_start = $3,
-                        scheduled_end = $4, status = 'scheduled',
-                        updated_at = NOW()
-                    WHERE id = $1
-                    """,
-                    existing,
-                    assignment["team_id"],
-                    to_time(assignment["scheduled_start"]),
-                    to_time(assignment["scheduled_end"]),
-                )
-                assignment["booking_id"] = str(existing)
-            else:
-                # Create new booking
-                row = await db.pool.fetchrow(
-                    """
-                    INSERT INTO cleaning_bookings
-                        (business_id, client_id, service_id, recurring_schedule_id,
-                         scheduled_date, scheduled_start, scheduled_end,
-                         estimated_duration_minutes, team_id,
-                         address_line1, city, state, zip_code,
-                         latitude, longitude,
-                         quoted_price, status, source, special_instructions)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-                            $10, $11, $12, $13, $14, $15, $16, 'scheduled', 'recurring', $17)
-                    RETURNING id
-                    """,
-                    business_id,
-                    assignment["client_id"],
-                    assignment["service_id"],
-                    assignment.get("schedule_id"),
-                    target_date,
-                    to_time(assignment["scheduled_start"]),
-                    to_time(assignment["scheduled_end"]),
-                    assignment["estimated_duration_minutes"],
-                    assignment["team_id"],
-                    assignment.get("address_line1"),
-                    assignment.get("city"),
-                    assignment.get("state"),
-                    assignment.get("zip_code"),
-                    assignment.get("latitude"),
-                    assignment.get("longitude"),
-                    assignment.get("agreed_price"),
-                    assignment.get("notes"),
-                )
-                assignment["booking_id"] = str(row["id"])
+        # Convert adjustment_amount to Decimal for pricing_engine
+        raw_adj = assignment.get("adjustment_amount", 0) or 0
+        try:
+            adj_decimal = Decimal(str(raw_adj))
+        except Exception:  # noqa: BLE001 — defensive cast
+            adj_decimal = Decimal("0")
 
+        try:
+            result = await create_booking_with_pricing(
+                db=db,
+                business_id=business_id,
+                client_id=assignment["client_id"],
+                service_id=assignment["service_id"],
+                scheduled_date=target_date,
+                scheduled_start=to_time(assignment["scheduled_start"]),
+                scheduled_end=to_time(assignment["scheduled_end"]),
+                estimated_duration_minutes=assignment.get("estimated_duration_minutes"),
+                team_id=assignment.get("team_id"),
+                recurring_schedule_id=schedule_id,
+                # Track A AC2 — pricing inputs from schedule
+                tier=assignment.get("service_tier"),  # None → booking_service fetches from service
+                extras=assignment.get("schedule_extras", []),
+                frequency_id=assignment.get("frequency_id"),
+                adjustment_amount=adj_decimal,
+                adjustment_reason=assignment.get("adjustment_reason"),
+                location_id=assignment.get("location_id"),
+                source="recurring",
+                status="scheduled",
+                address_line1=assignment.get("address_line1"),
+                special_instructions=assignment.get("notes"),
+            )
+        except PricingConfigError as exc:
+            # Track A AC7: log warning, skip schedule, continue with others
+            logger.warning(
+                "[RECURRING] Pricing failure for schedule=%s client=%s: %s. Booking SKIPPED.",
+                schedule_id,
+                assignment.get("client_id"),
+                exc,
+            )
+            pricing_failures.append({
+                "schedule_id": str(schedule_id) if schedule_id else None,
+                "reason": str(exc),
+            })
+            continue
+
+        assignment["booking_id"] = result["booking_id"]
+        # Track A AC7: observability per successful generation
+        breakdown = result["breakdown"]
+        logger.info(
+            "[RECURRING] Generated booking=%s schedule=%s client=%s final=$%s tier=%s override=%s extras=%d",
+            result["booking_id"],
+            schedule_id,
+            assignment["client_id"],
+            breakdown["final_amount"],
+            assignment.get("service_tier") or "basic",
+            breakdown["override_applied"],
+            result["extras_written"],
+        )
         persisted.append(assignment)
 
-    logger.info("[SCHEDULE] Persisted %d bookings for %s", len(persisted), target_date)
-    return persisted
+    logger.info(
+        "[SCHEDULE] Persisted %d bookings for %s (pricing_failures: %d)",
+        len(persisted), target_date, len(pricing_failures),
+    )
+    return persisted, pricing_failures
 
 
 async def _cache_schedule(
@@ -801,18 +925,23 @@ async def generate_daily_schedule(
         )
 
         # STEP 1: Collect jobs
-        jobs, matched_schedules = await _collect_jobs(db, business_id, target_date)
+        # Sprint D Track A: _collect_jobs now returns (jobs, matched_schedules, skipped_count)
+        jobs, matched_schedules, skipped_by_skip_table = await _collect_jobs(
+            db, business_id, target_date,
+        )
         if not jobs:
             result = {
                 "assigned": [],
                 "conflicts": [],
                 "unassigned": [],
+                "pricing_failures": [],
                 "summary": {
                     "date": target_date.isoformat(),
                     "total_jobs": 0,
                     "assigned_count": 0,
                     "unassigned_count": 0,
                     "conflict_count": 0,
+                    "skipped_by_skip_table": skipped_by_skip_table,
                 },
             }
             await _cache_schedule(business_id, target_date, result)
@@ -833,12 +962,14 @@ async def generate_daily_schedule(
                 "assigned": [],
                 "conflicts": [],
                 "unassigned": unassigned,
+                "pricing_failures": [],
                 "summary": {
                     "date": target_date.isoformat(),
                     "total_jobs": len(jobs),
                     "assigned_count": 0,
                     "unassigned_count": len(jobs),
                     "conflict_count": 0,
+                    "skipped_by_skip_table": skipped_by_skip_table,
                 },
             }
             await _cache_schedule(business_id, target_date, result)
@@ -853,12 +984,25 @@ async def generate_daily_schedule(
         conflicts = _apply_travel_buffers_and_detect_conflicts(assigned, teams)
 
         # STEP 5a: Persist bookings
-        persisted = await _persist_assignments(db, business_id, target_date, assigned)
+        # Sprint D Track A: returns (persisted, pricing_failures)
+        persisted, pricing_failures = await _persist_assignments(
+            db, business_id, target_date, assigned,
+        )
 
         # STEP 5b: Advance next_occurrence for matched recurring schedules
-        if matched_schedules:
+        # Only advance for schedules that actually produced a booking (not
+        # those that failed pricing). Otherwise a schedule with persistent
+        # pricing error would silently skip all occurrences.
+        successful_schedule_ids = {
+            a.get("schedule_id") for a in persisted if a.get("schedule_id")
+        }
+        successful_matched = [
+            s for s in matched_schedules
+            if str(s["schedule_id"]) in successful_schedule_ids
+        ]
+        if successful_matched:
             await bulk_advance(db, business_id, [
-                {"id": str(s["schedule_id"])} for s in matched_schedules
+                {"id": str(s["schedule_id"])} for s in successful_matched
             ], target_date)
 
         # Build result
@@ -885,12 +1029,14 @@ async def generate_daily_schedule(
             } for a in persisted],
             "conflicts": conflicts,
             "unassigned": unassigned,
+            "pricing_failures": pricing_failures,
             "summary": {
                 "date": target_date.isoformat(),
                 "total_jobs": len(jobs),
                 "assigned_count": len(persisted),
                 "unassigned_count": len(unassigned),
                 "conflict_count": len(conflicts),
+                "skipped_by_skip_table": skipped_by_skip_table,
             },
         }
 
