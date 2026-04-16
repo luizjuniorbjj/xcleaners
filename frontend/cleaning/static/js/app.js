@@ -355,6 +355,7 @@ window.Xcleaners = {
       ]},
       { label: 'Finance', items: [
         { label: 'Invoices', route: '/invoices', icon: 'invoices' },
+        { label: 'Payroll', route: '/payroll', icon: 'teams' },
         { label: 'Reports', route: '/reports', icon: 'reports' },
       ]},
       { label: 'Tools', items: [
