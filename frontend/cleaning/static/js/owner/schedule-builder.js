@@ -1412,7 +1412,10 @@ window.OwnerScheduleBuilder = {
     `;
 
     footer.innerHTML = `
-      <div style="display:flex;gap:var(--cc-space-2);">
+      <div style="display:flex;gap:var(--cc-space-2);flex-wrap:wrap;">
+        <button class="cc-btn cc-btn-ghost cc-btn-sm" onclick="OwnerScheduleBuilder._reassignTeamFromPanel('${bookingId}', ${data.team_id ? `'${data.team_id}'` : 'null'})">
+          Reassign team
+        </button>
         <button class="cc-btn cc-btn-secondary cc-btn-sm" onclick="OwnerScheduleBuilder._editBookingFromPanel('${bookingId}')">
           Edit
         </button>
@@ -1440,6 +1443,26 @@ window.OwnerScheduleBuilder = {
     if (this._panelEscHandler) {
       document.removeEventListener('keydown', this._panelEscHandler);
     }
+  },
+
+  _reassignTeamFromPanel(bookingId, currentTeamId) {
+    if (!window.AssignTeamModal) {
+      alert('Reassign unavailable — helper not loaded. Refresh page.');
+      return;
+    }
+    AssignTeamModal.open({
+      bookingId,
+      currentTeamId,
+      onSuccess: async () => {
+        this._closeSidePanel();
+        // Refresh the schedule view so the new team assignment is visible
+        if (typeof this._loadSchedule === 'function') {
+          await this._loadSchedule();
+        } else if (typeof this.render === 'function' && this._container) {
+          await this.render(this._container);
+        }
+      },
+    });
   },
 
   _editBookingFromPanel(bookingId) {

@@ -350,12 +350,28 @@ window.OwnerBookings = {
         ${b.checkout_at ? `<div class="cc-text-xs cc-text-muted">Checked out: ${new Date(b.checkout_at).toLocaleString()}</div>` : ''}
       </div>
       <div class="cc-modal-footer">
+        ${!['completed', 'cancelled', 'no_show'].includes(b.status) ? `<button class="cc-btn cc-btn-ghost cc-btn-sm" onclick="OwnerBookings._reassignTeam('${b.id}', ${b.team_id ? `'${b.team_id}'` : 'null'})">Reassign team</button>` : ''}
         ${b.status === 'scheduled' ? `<button class="cc-btn cc-btn-danger cc-btn-sm" onclick="OwnerBookings._cancelBooking('${b.id}');OwnerBookings._closeModal();">Cancel Booking</button>` : ''}
         <button class="cc-btn cc-btn-secondary cc-btn-sm" onclick="OwnerBookings._closeModal()">Close</button>
       </div>
     `;
 
     document.getElementById('ob-modal-overlay').classList.add('cc-visible');
+  },
+
+  _reassignTeam(bookingId, currentTeamId) {
+    if (!window.AssignTeamModal) {
+      alert('Reassign unavailable — helper not loaded. Refresh page.');
+      return;
+    }
+    AssignTeamModal.open({
+      bookingId,
+      currentTeamId,
+      onSuccess: () => {
+        this._closeModal();
+        this.render(this._container || document.getElementById('content-view'));
+      },
+    });
   },
 
   // ===== Story 1.1 AC4 — Pricing breakdown (read-only, from price_snapshot) =====
