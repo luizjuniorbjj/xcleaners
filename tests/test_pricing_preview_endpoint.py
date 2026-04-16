@@ -333,7 +333,9 @@ async def test_preview_missing_formula_returns_400(
             db=db,
         )
     assert excinfo.value.status_code == 400
-    assert "formula" in excinfo.value.detail.lower()
+    # Smith B4 sanitized detail — still mentions "configuration" or "formula"
+    detail = excinfo.value.detail.lower()
+    assert "formula" in detail or "configuration" in detail
 
 
 @pytest.mark.asyncio

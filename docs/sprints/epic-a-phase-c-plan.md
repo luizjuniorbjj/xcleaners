@@ -291,6 +291,39 @@ Verdicts de @smith sobre commits `5200678` (C3 UX) + `6ebc2d4` (C2 backend): **a
 
 ---
 
+## Story 1.1b — Backend CRUD + Security Hardening (2026-04-16)
+
+Post-C7 follow-up sprint consolidating Smith Wave 1 blockers into a single commit.
+
+### Entregas
+
+1. **Smith B1 UUID validation** em `models/pricing.py`: `_validate_uuid_str` helper + field_validators em `service_id`/`frequency_id`/`location_id`/`extra_id`. UUID malformed → 422 Pydantic antes de chegar no engine.
+2. **Smith B2 DoS prevention**: `extras: list[ExtraSelection] = Field(max_length=50)` + `qty: Field(le=99)` em ExtraSelection.
+3. **Smith B3 adjustment bounds**: `adjustment_amount: Field(ge=-10000, le=10000)` — prejuízo absurdo bloqueado antes do engine.
+4. **Smith B4 error detail sanitize**: `HTTPException.detail` mapeado para mensagens públicas genéricas ("Service not found", "Pricing configuration incomplete", etc.). `business_id` interno nunca vaza.
+5. **20 novos endpoints backend CRUD** em `pricing_crud_routes.py` — desbloqueia Smith A2:
+   - `/pricing/formulas` (GET/POST/PATCH)
+   - `/pricing/overrides` (GET/DELETE)
+   - `/pricing/extras` (GET/POST/PATCH) com `allowed_in_count`
+   - `/pricing/frequencies` (GET/POST/PATCH/set-default atomic) com `usage_count`
+   - `/pricing/taxes` (GET/POST com chronology 409/PATCH) com `usage_count`
+   - `/services/{id}/extras` (GET/PUT whitelist)
+   - `/bookings/{id}/recalculate` (POST via `recalculate_booking_snapshot`)
+   - `/locations` (GET cleaning_areas wrapper)
+6. **DB Railway hardening**: `businesses.logo_url` + `businesses.status` ALTER TABLE ADD COLUMN IF NOT EXISTS aplicados em produção (local já tinha via ALTER preventivo).
+
+### Pendente pós esta sessão
+
+- Smith A1: i18n ES/PT completos namespace `pricing.*` (Sati + Seraph)
+- Ana cross-check 5 real bookings (gate humano)
+- Smith B6-B8 cleanup (branch morto, UUID constante em teste, DRY scheduled_date)
+
+### Verificação
+
+- 44/44 pytest PASS (regressão intacta)
+- `GET /pricing/formulas` retorna formula seedada com `tier_multipliers` correto
+- `GET /pricing/frequencies` retorna 4 frequencies seedadas (One Time default, Weekly 15%, Biweekly 10%, Monthly 5%)
+
 ## Change log
 
 | Date | Version | Change | Author |

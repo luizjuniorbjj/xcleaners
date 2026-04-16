@@ -95,8 +95,26 @@ async def preview_pricing(
             db=db,
         )
     except PricingConfigError as exc:
-        logger.info("pricing/preview rejected: %s", exc)
-        raise HTTPException(status_code=400, detail=str(exc))
+        # Smith B4: sanitize error detail — log full internally, public msg generic.
+        # Raw exc may leak business_id UUID and internal field names.
+        logger.warning(
+            "pricing/preview PricingConfigError for biz=%s: %s",
+            business_id, exc,
+        )
+        msg = str(exc).lower()
+        if "service not found" in msg:
+            public = "Service not found."
+        elif "no active pricing formula" in msg or "formula" in msg:
+            public = "Pricing configuration incomplete for this business."
+        elif "invalid tier" in msg:
+            public = "Invalid tier value."
+        elif "service_metadata" in msg:
+            public = "service_id or service_metadata must be provided."
+        elif "scheduled_date" in msg:
+            public = "Invalid scheduled_date format."
+        else:
+            public = "Pricing configuration error."
+        raise HTTPException(status_code=400, detail=public)
 
     return PricingPreviewResponse(
         breakdown=stringify_decimals(breakdown),

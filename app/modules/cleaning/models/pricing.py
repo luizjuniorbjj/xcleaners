@@ -21,8 +21,28 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+# Smith Wave 1 B3: tightened bounds for adjustment (prevent prejuízo via huge negative)
+_ADJUSTMENT_MIN = Decimal("-10000")
+_ADJUSTMENT_MAX = Decimal("10000")
+
+# Smith Wave 1 B2: extras list max_length to prevent DoS
+_EXTRAS_MAX_LENGTH = 50
+
+
+def _validate_uuid_str(v: Optional[str], field_name: str) -> Optional[str]:
+    """Smith B1: validate UUID format on string fields (service_id, frequency_id, etc)."""
+    if v is None or v == "":
+        return v
+    try:
+        UUID(v)
+        return v
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(f"{field_name} must be a valid UUID; got {v!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +54,12 @@ class ExtraSelection(BaseModel):
     """One selected extra for preview."""
 
     extra_id: str = Field(..., description="cleaning_extras.id UUID")
-    qty: int = Field(default=1, ge=1, description="Qty (must be >= 1)")
+    qty: int = Field(default=1, ge=1, le=99, description="Qty (must be >= 1)")
+
+    @field_validator("extra_id")
+    @classmethod
+    def _uuid_extra(cls, v: str) -> str:
+        return _validate_uuid_str(v, "extra_id")
 
 
 class ServiceMetadata(BaseModel):
@@ -74,12 +99,18 @@ class PricingPreviewRequest(BaseModel):
             "provided, tier here drives the override lookup key."
         ),
     )
-    extras: list[ExtraSelection] = Field(default_factory=list)
+    # Smith B2: hard cap extras length to prevent DoS via thousands of entries
+    extras: list[ExtraSelection] = Field(
+        default_factory=list, max_length=_EXTRAS_MAX_LENGTH
+    )
     frequency_id: Optional[str] = Field(
         default=None, description="cleaning_frequencies.id; None = 0% discount."
     )
+    # Smith B3: bound adjustment to prevent booking confirmation with absurd values
     adjustment_amount: Decimal = Field(
         default=Decimal("0"),
+        ge=_ADJUSTMENT_MIN,
+        le=_ADJUSTMENT_MAX,
         description="Signed manual adjustment applied BEFORE tax.",
     )
     adjustment_reason: Optional[str] = Field(default=None, max_length=255)
@@ -87,6 +118,12 @@ class PricingPreviewRequest(BaseModel):
         default=None,
         description="cleaning_areas.id — drives tax lookup (F-001) and location-specific formula.",
     )
+
+    @field_validator("service_id", "frequency_id", "location_id")
+    @classmethod
+    def _uuid_optional(cls, v: Optional[str], info) -> Optional[str]:
+        # Smith B1: enforce UUID format on all reference fields
+        return _validate_uuid_str(v, info.field_name)
     scheduled_date: Optional[str] = Field(
         default=None,
         description=(
