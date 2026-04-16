@@ -52,6 +52,7 @@ from app.modules.cleaning.routes.ai_routes import router as cleaning_ai_router
 from app.modules.cleaning.routes.auth_routes import router as cleaning_auth_router
 from app.modules.cleaning.routes.plan import router as cleaning_plan_router
 from app.modules.cleaning.routes.push_routes import router as cleaning_push_router
+from app.modules.cleaning.routes.pricing_routes import router as cleaning_pricing_router
 
 # Auth router (needed for login/token endpoints)
 from app.auth import router as auth_router
@@ -187,6 +188,7 @@ app.include_router(cleaning_ai_router)
 app.include_router(cleaning_auth_router)
 app.include_router(cleaning_plan_router)
 app.include_router(cleaning_push_router)
+app.include_router(cleaning_pricing_router)
 app.include_router(cleaning_app_router)
 
 

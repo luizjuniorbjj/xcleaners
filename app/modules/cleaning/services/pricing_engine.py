@@ -359,7 +359,7 @@ async def _load_extras_with_prices(
 
 async def calculate_booking_price(
     business_id: UUID,
-    service_id: UUID,
+    service_id: UUID | None,
     tier: Tier | str,
     extras: list[dict],
     frequency_id: UUID | None,
@@ -367,6 +367,7 @@ async def calculate_booking_price(
     adjustment_reason: str | None = None,
     location_id: UUID | None = None,
     scheduled_date: date_cls | str | None = None,
+    service_metadata: dict | None = None,
     db: Database | None = None,
 ) -> PriceBreakdown:
     """
@@ -375,6 +376,9 @@ async def calculate_booking_price(
     Args:
         business_id: tenant scope for formula + frequencies lookup.
         service_id: cleaning_services row; provides BR/BA for formula base.
+            Pass `None` together with `service_metadata` to compute a preview
+            without a persisted service (e.g., owner creating a new service).
+            When None, override lookup is skipped (no service_id to key on).
         tier: 'basic' | 'deep' | 'premium' (controls tier_multiplier OR override lookup).
         extras: list of `{extra_id: UUID, qty: int}` — resolved against cleaning_extras.
         frequency_id: cleaning_frequencies row; None => 0% discount.
@@ -384,6 +388,10 @@ async def calculate_booking_price(
         scheduled_date: booking's scheduled service date for historical tax lookup
             (Fix F-001). Accepts date or ISO-8601 str ('YYYY-MM-DD'). Defaults to
             today (UTC) when None — preview-style lookup.
+        service_metadata: required when service_id is None. Dict with keys
+            `{bedrooms: int, bathrooms: int}`. Used to compute formula base
+            without touching cleaning_services. Preview endpoints pass this
+            to render prices for services not yet persisted.
         db: Database instance (asyncpg pool wrapper).
 
     Returns:
@@ -430,18 +438,38 @@ async def calculate_booking_price(
 
     adjustment = _to_decimal(adjustment_amount)
 
-    # ------- Step 0: fetch service (provides BR/BA) -----------------------
-    service = await _get_service(db, service_id)
-    if service is None:
-        raise PricingConfigError(
-            f"Service not found: service_id={service_id}, business_id={business_id}"
-        )
-
-    bedrooms = int(service["bedrooms"] or 0)
-    bathrooms = int(service["bathrooms"] or 0)
-
-    # ------- Step 1: service_amount — override precedence over formula -----
-    override = await _get_override(db, service_id, tier_lower)
+    # ------- Step 0: resolve service inputs --------------------------------
+    # Two paths:
+    #   A. service_id provided  → fetch cleaning_services row (canonical path)
+    #   B. service_id is None   → require service_metadata (preview mode —
+    #      used by the preview endpoint when owner is creating a service
+    #      that does not exist in the DB yet). Override lookup is skipped
+    #      because there is no service_id to key on.
+    override = None
+    if service_id is not None:
+        service = await _get_service(db, service_id)
+        if service is None:
+            raise PricingConfigError(
+                f"Service not found: service_id={service_id}, business_id={business_id}"
+            )
+        bedrooms = int(service["bedrooms"] or 0)
+        bathrooms = int(service["bathrooms"] or 0)
+        override = await _get_override(db, service_id, tier_lower)
+    else:
+        if not isinstance(service_metadata, dict):
+            raise PricingConfigError(
+                "service_id is None — service_metadata dict required "
+                "with keys {bedrooms, bathrooms} to compute preview."
+            )
+        try:
+            bedrooms = int(service_metadata.get("bedrooms", 0) or 0)
+            bathrooms = int(service_metadata.get("bathrooms", 0) or 0)
+        except (TypeError, ValueError) as exc:
+            raise PricingConfigError(
+                f"service_metadata.bedrooms and .bathrooms must be integers; "
+                f"got {service_metadata}"
+            ) from exc
+        # Override lookup skipped — no service_id
 
     formula_id: str | None = None
     base_amount = Decimal("0")
@@ -508,7 +536,7 @@ async def calculate_booking_price(
 
     breakdown: PriceBreakdown = {
         "formula_id": formula_id,
-        "service_id": str(service_id),
+        "service_id": str(service_id) if service_id is not None else None,
         "tier": tier_lower,
         "tier_multiplier": tier_multiplier,
         "base_amount": base_amount,

@@ -220,8 +220,8 @@ Antes de sair de qualquer sessão:
 ## Status do sprint
 
 - [x] C1 — Task 6 Booking Integration + Fix F-001 ✓ (2026-04-16) — `booking_service.py` NEW + `schedule.py` integration + F-001 tax scheduled_date + 31/31 tests PASS (2 integration unskipped)
-- [ ] C2 — Task 3 Preview Endpoint
-- [ ] C3 — UX Specs (Sati)
+- [x] C2 — Task 3 Preview Endpoint ✓ (2026-04-16) — `models/pricing.py` + `routes/pricing_routes.py` NEW; engine extended with `service_metadata` kwarg for preview-without-service_id; 13/13 new tests PASS (44 total with regression)
+- [x] C3 — UX Specs (Sati) ✓ (2026-04-16) — `docs/ux/story-1.1-ui-specs.md` (1090 linhas: 4 modules wireframes + preview pane + interaction flows + i18n EN/ES/PT + acceptance checklists)
 - [ ] C4 — UI Extend (services.js + bookings.js)
 - [ ] C5a — Pricing + Extras managers
 - [ ] C5b — Frequencies + Taxes managers
@@ -257,6 +257,7 @@ Verdict adversarial de @smith sobre commit `3555508`: **CONTAINED** — entrega 
 |------|---------|--------|--------|
 | 2026-04-16 | 1.0 | Initial sprint plan for Fase C (8 sessions mapped) | @lmas-master (Morpheus) |
 | 2026-04-16 | 1.1 | C1 executed: booking_service + schedule.py integration + F-001 fix + 2 integration tests PASS | @dev (Neo) |
+| 2026-04-16 | 1.2 | C2 + C3 executed: UX specs 1090 lines (Sati) + preview endpoint with service_metadata support (Neo) + 13 new tests PASS (44 total) | @ux-design-expert (Sati) + @dev (Neo) |
 
 ---
 
