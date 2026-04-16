@@ -139,6 +139,11 @@ window.CleanAPI = {
     if (body) {
       config.body = body instanceof FormData ? body : JSON.stringify(body);
     }
+    // AbortController support — caller may pass { signal } in options
+    // (used by debounced pricing preview to cancel stale in-flight requests).
+    if (options.signal) {
+      config.signal = options.signal;
+    }
 
     try {
       let resp = await fetch(url, config);
@@ -227,28 +232,29 @@ window.CleanAPI = {
 
   // Convenience methods
 
-  get(path) { return this.request('GET', path); },
-  post(path, body) { return this.request('POST', path, body); },
-  put(path, body) { return this.request('PUT', path, body); },
-  patch(path, body) { return this.request('PATCH', path, body); },
-  del(path) { return this.request('DELETE', path); },
+  get(path, opts) { return this.request('GET', path, null, opts || {}); },
+  post(path, body, opts) { return this.request('POST', path, body, opts || {}); },
+  put(path, body, opts) { return this.request('PUT', path, body, opts || {}); },
+  patch(path, body, opts) { return this.request('PATCH', path, body, opts || {}); },
+  del(path, opts) { return this.request('DELETE', path, null, opts || {}); },
 
   // Cleaning-scoped helpers (prepend /api/v1/clean/{slug}/)
+  // opts supports { signal } for AbortController.
 
-  cleanGet(endpoint) {
-    return this.get(`/api/v1/clean/${this._slug}${endpoint}`);
+  cleanGet(endpoint, opts) {
+    return this.get(`/api/v1/clean/${this._slug}${endpoint}`, opts);
   },
-  cleanPost(endpoint, body) {
-    return this.post(`/api/v1/clean/${this._slug}${endpoint}`, body);
+  cleanPost(endpoint, body, opts) {
+    return this.post(`/api/v1/clean/${this._slug}${endpoint}`, body, opts);
   },
-  cleanPatch(endpoint, body) {
-    return this.patch(`/api/v1/clean/${this._slug}${endpoint}`, body);
+  cleanPatch(endpoint, body, opts) {
+    return this.patch(`/api/v1/clean/${this._slug}${endpoint}`, body, opts);
   },
-  cleanPut(endpoint, body) {
-    return this.put(`/api/v1/clean/${this._slug}${endpoint}`, body);
+  cleanPut(endpoint, body, opts) {
+    return this.put(`/api/v1/clean/${this._slug}${endpoint}`, body, opts);
   },
-  cleanDel(endpoint) {
-    return this.del(`/api/v1/clean/${this._slug}${endpoint}`);
+  cleanDel(endpoint, opts) {
+    return this.del(`/api/v1/clean/${this._slug}${endpoint}`, opts);
   },
 
   // ----- Offline Queue -----

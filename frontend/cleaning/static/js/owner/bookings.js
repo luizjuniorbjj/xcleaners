@@ -298,6 +298,9 @@ window.OwnerBookings = {
     const dateStr = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     const modal = document.getElementById('ob-modal-content');
 
+    const terminalStatus = ['completed', 'cancelled', 'no_show'].includes(b.status);
+    const pricingBlock = this._renderPricingBreakdown(b, terminalStatus);
+
     modal.innerHTML = `
       <div class="cc-modal-header">
         <h3 class="cc-modal-title">Booking Detail</h3>
@@ -334,6 +337,8 @@ window.OwnerBookings = {
           </div>
         </div>
 
+        ${pricingBlock}
+
         ${b.notes ? `
           <div>
             <div class="cc-text-xs cc-text-muted">Notes</div>
@@ -351,6 +356,163 @@ window.OwnerBookings = {
     `;
 
     document.getElementById('ob-modal-overlay').classList.add('cc-visible');
+  },
+
+  // ===== Story 1.1 AC4 — Pricing breakdown (read-only, from price_snapshot) =====
+  //
+  // bookings.js is a LIST view (table + detail modal). The INTERACTIVE preview
+  // pane (debounced 300ms, AbortController for last-request-wins) lives in the
+  // CREATE/EDIT flow which is in schedule.js — NOT modified in this session.
+  // Deferred to C4b. The snapshot render below fulfills the "Edit mode shows
+  // price_snapshot" part of spec §3.5, including Recalculate hint.
+
+  _renderPricingBreakdown(b, terminalStatus) {
+    const snap = b.price_snapshot;
+    if (!snap && b.final_price == null && b.quoted_price == null) {
+      return '';
+    }
+    // Normalize numeric fields (snapshot may be string from JSONB, or dict)
+    const fmt = (v) => {
+      if (v == null || v === '') return null;
+      const num = typeof v === 'number' ? v : parseFloat(String(v));
+      if (Number.isNaN(num)) return null;
+      const sign = num < 0 ? '-' : '';
+      return `${sign}$${Math.abs(num).toFixed(2)}`;
+    };
+
+    // Prefer snapshot fields; fallback to flat booking columns
+    const subtotal = fmt(snap ? snap.subtotal : b.subtotal);
+    const discount = fmt(snap ? snap.discount_amount : b.discount_amount);
+    const adjustment = fmt(snap ? snap.adjustment_amount : b.adjustment_amount);
+    const amountBeforeTax = fmt(snap ? snap.amount_before_tax : null);
+    const tax = fmt(snap ? snap.tax_amount : b.tax_amount);
+    const finalAmount = fmt(snap ? snap.final_amount : b.final_price) || fmt(b.quoted_price) || '—';
+    const override = snap && snap.override_applied;
+    const calculatedAt = snap && snap.calculated_at
+      ? new Date(snap.calculated_at).toLocaleString()
+      : null;
+
+    // Row helper — omit zero/null lines for compactness
+    const row = (label, value, opts = {}) => {
+      if (!value || value === '$0.00' || value === '-$0.00') {
+        if (!opts.showZero) return '';
+      }
+      const color = opts.danger ? 'var(--cc-danger-600)' : 'inherit';
+      const weight = opts.bold ? '600' : '400';
+      return `
+        <div style="display:flex;justify-content:space-between;padding:var(--cc-space-1) 0;color:${color};font-weight:${weight};">
+          <span>${label}</span>
+          <span>${value}</span>
+        </div>
+      `;
+    };
+
+    return `
+      <div class="cc-card" style="background:var(--cc-neutral-50, #F9FAFB);padding:var(--cc-space-4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--cc-space-3);">
+          <div style="font-weight:600;color:var(--cc-neutral-800);">Pricing Breakdown</div>
+          ${override ? `
+            <span class="cc-badge cc-badge-sm"
+                  role="status"
+                  style="background:var(--cc-warning-50, #FEF3C7);color:var(--cc-warning-700, #92400E);">
+              OVERRIDE
+            </span>
+          ` : ''}
+        </div>
+
+        ${row('SUBTOTAL', subtotal, { bold: true })}
+        ${row('− Discount', discount)}
+        ${row('± Adjustment', adjustment)}
+        ${row('Amount before tax', amountBeforeTax, { bold: true })}
+        ${row('+ Sales Tax', tax)}
+
+        <div style="border-top:1px solid var(--cc-neutral-300);margin-top:var(--cc-space-2);padding-top:var(--cc-space-3);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;">FINAL</span>
+            <span style="font-size:var(--cc-text-2xl, 1.5rem);font-weight:700;color:var(--cc-primary-600);">
+              ${finalAmount}
+            </span>
+          </div>
+        </div>
+
+        ${snap && !terminalStatus ? `
+          <div style="margin-top:var(--cc-space-3);padding-top:var(--cc-space-3);border-top:1px dashed var(--cc-neutral-200);">
+            <div class="cc-text-sm cc-text-muted" style="display:flex;justify-content:space-between;align-items:center;gap:var(--cc-space-2);flex-wrap:wrap;">
+              <span>ℹ Snapshot locked${calculatedAt ? ' at ' + calculatedAt : ''}</span>
+              <button class="cc-btn cc-btn-ghost cc-btn-xs" onclick="OwnerBookings._showRecalculateModal('${b.id}')">
+                ↻ Recalculate pricing
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        ${terminalStatus ? `
+          <div class="cc-text-xs cc-text-muted" style="margin-top:var(--cc-space-2);">
+            Pricing is read-only for ${b.status} bookings.
+          </div>
+        ` : ''}
+      </div>
+    `;
+  },
+
+  _showRecalculateModal(bookingId) {
+    const b = this._allBookings.find(x => x.id === bookingId);
+    if (!b) return;
+    const snap = b.price_snapshot || {};
+    const currentFinal = snap.final_amount != null ? `$${Number(snap.final_amount).toFixed(2)}`
+                       : b.final_price != null ? `$${Number(b.final_price).toFixed(2)}`
+                       : '—';
+
+    const modal = document.getElementById('ob-modal-content');
+    modal.innerHTML = `
+      <div class="cc-modal-header">
+        <h3 class="cc-modal-title">Recalculate Pricing?</h3>
+        <button class="cc-modal-close" onclick="OwnerBookings._closeModal()">&times;</button>
+      </div>
+      <div class="cc-modal-body" style="display:flex;flex-direction:column;gap:var(--cc-space-3);">
+        <p class="cc-text-sm">
+          This will overwrite the original price snapshot with current formula + override + extras catalog values.
+        </p>
+        <div style="display:grid;gap:var(--cc-space-2);background:var(--cc-neutral-50);padding:var(--cc-space-3);border-radius:var(--cc-radius-md);">
+          <div style="display:flex;justify-content:space-between;"><span>Current final:</span><strong>${currentFinal}</strong></div>
+          <div style="display:flex;justify-content:space-between;color:var(--cc-text-muted);">
+            <span>New final:</span><em>computed on server</em>
+          </div>
+        </div>
+        <p class="cc-text-xs cc-text-muted" role="alert">
+          ⚠ This action is logged in audit trail.
+        </p>
+      </div>
+      <div class="cc-modal-footer">
+        <button class="cc-btn cc-btn-secondary cc-btn-sm" onclick="OwnerBookings._showDetail('${bookingId}')">Cancel</button>
+        <button class="cc-btn cc-btn-warning cc-btn-sm" onclick="OwnerBookings._doRecalculate('${bookingId}')">⚠ Recalculate Anyway</button>
+      </div>
+    `;
+    document.getElementById('ob-modal-overlay').classList.add('cc-visible');
+  },
+
+  async _doRecalculate(bookingId) {
+    try {
+      const resp = await CleanAPI.cleanPost(`/bookings/${bookingId}/recalculate`, {});
+      // Patch local snapshot if response returned updated data
+      const idx = this._allBookings.findIndex(b => b.id === bookingId);
+      if (idx >= 0 && resp && resp.breakdown) {
+        this._allBookings[idx].price_snapshot = resp.breakdown;
+        if (resp.breakdown.final_amount != null) {
+          this._allBookings[idx].final_price = resp.breakdown.final_amount;
+        }
+      }
+      Xcleaners.showToast('Pricing recalculated.', 'success');
+      this._showDetail(bookingId);
+    } catch (err) {
+      // Graceful: endpoint /bookings/{id}/recalculate may not exist yet (Smith A2)
+      if (err && err.status === 404) {
+        Xcleaners.showToast('Recalculate endpoint not yet available. Please contact support.', 'warning');
+      } else {
+        Xcleaners.showToast(err.detail || 'Could not recalculate pricing.', 'error');
+      }
+      this._showDetail(bookingId);
+    }
   },
 
   // ----- Actions -----
