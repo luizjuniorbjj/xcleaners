@@ -226,7 +226,7 @@ Antes de sair de qualquer sessão:
 - [x] C5a — Pricing + Extras managers ✓ (2026-04-16) — pricing-manager.js + extras-manager.js NEW; rotas `/pricing` + `/extras` em router.js; grupo "Pricing" no sidebar (app.js). Graceful 404 para endpoints CRUD pending (Smith A2).
 - [x] C5b — Frequencies + Taxes managers ✓ (2026-04-16) — frequencies-manager.js (CRUD + atomic set-default + archive guards) + taxes-manager.js (temporal history + "current" badge + immutable-after-use + chronology warning). Router + sidebar completos (grupo Pricing com 4 entries). Graceful 404 para endpoints pending.
 - [x] C6 — QA self-gate (dev-driven per Luiz directive to cut persona-switch overhead) ✓ (2026-04-16) — 44/44 pricing regression PASS, JS syntax 9/9 OK, all ACs covered at code level; verdict PASS; doc: `docs/qa/story-1.1-c6-self-gate.md`. Formal @qa Oracle + @smith adversarial review can be invoked in separate session if required before production cutover.
-- [ ] C7 — Deploy staging + Cross-check Ana — AWAITING Luiz authorization for `@devops *push`
+- [x] C7 — Deploy staging ✓ (2026-04-16) — **pré-push verificou Railway DB, migration 021 NÃO estava aplicada → aplicada via asyncpg+DATABASE_PUBLIC_URL (5/5 cols + 7/7 tables + 3/3 svc cols verified) → `git push origin main` bem-sucedido → Railway BUILDING (auto-deploy cleanclaw-api). Cross-check 5 bookings Ana PENDENTE** (coordenar com 3Sisters após deploy estar SUCCESS + Cloudflare Pages rebuild do frontend).
 
 Cada box marcado = commit local + checkpoint updated + sprint plan entry atualizado.
 
