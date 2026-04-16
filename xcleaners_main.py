@@ -58,6 +58,11 @@ from app.modules.cleaning.routes.pricing_crud_routes import router as cleaning_p
 from app.modules.cleaning.routes.payroll_routes import router as cleaning_payroll_router
 # Sprint D Track A — recurring auto-generator internal routes (HMAC-authed)
 from app.modules.cleaning.routes.recurring_routes import router as cleaning_recurring_router
+# Sprint E item 1 — Stripe Connect Express onboarding + webhook
+from app.modules.cleaning.routes.stripe_connect_routes import (
+    router as cleaning_stripe_connect_router,
+    webhook_router as cleaning_stripe_webhook_router,
+)
 
 # Auth router (needed for login/token endpoints)
 from app.auth import router as auth_router
@@ -197,6 +202,8 @@ app.include_router(cleaning_pricing_router)
 app.include_router(cleaning_pricing_crud_router)
 app.include_router(cleaning_payroll_router)
 app.include_router(cleaning_recurring_router)
+app.include_router(cleaning_stripe_connect_router)
+app.include_router(cleaning_stripe_webhook_router)
 app.include_router(cleaning_app_router)
 
 
