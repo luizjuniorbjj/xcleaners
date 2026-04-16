@@ -251,6 +251,46 @@ Verdict adversarial de @smith sobre commit `3555508`: **CONTAINED** — entrega 
 
 ---
 
+## Smith Wave 1 — Backlog Registrado (2026-04-16)
+
+Verdicts de @smith sobre commits `5200678` (C3 UX) + `6ebc2d4` (C2 backend): **ambos CONTAINED**. Wave 1 aprovada para prosseguir. Zero CRITICAL/HIGH. 13 findings rota­dos abaixo; nenhum bloqueador imediato de C4.
+
+### Review A — C3 UX Spec (`docs/ux/story-1.1-ui-specs.md`) — verdict CONTAINED
+
+| # | Sev | Onde | O quê | Route |
+|---|-----|------|-------|-------|
+| **A1** | MEDIUM | §9.2-9.3 | i18n ES/PT incompletos (~15 keys vs ~100 EN). Delegar "@dev completa" risca passar sem `@content-reviewer`. | **C6 pre-C5b** — Sati + Seraph entregam ES/PT completas |
+| **A2** | MEDIUM | §4.5, §5.4, §6.5, §7.5 | Lista 7 endpoints REST (`/pricing/formulas`, `/pricing/overrides`, `/pricing/extras`, `/pricing/frequencies`, `/pricing/taxes`) como se existissem. Apenas `/pricing/preview` existe. Nota de caveat enterrada no doc. | **Backlog** — criar Story 1.1b OU expandir File List com endpoints a implementar como blockers de C5a/b |
+| **A3** | LOW | §4-7 wireframes | Accessibility superficial — falta `aria-live="polite"` no preview, `role="alert"` em warnings, `aria-describedby` em helper texts, keyboard shortcut set-default. | **C4/C5** — Sati publica pre-publish-checklist a11y |
+| **A4** | LOW | §4.2 pricing-manager | Sem empty state "no formula configured" (owner pode arquivar formula default). | **Backlog** — empty state com CTA "Recreate Standard Formula" |
+| **A5** | LOW | §3.2 preview pane | Omite `AbortController` / last-request-wins em request overlap (race condition possível). | **C4** — documentar + implementar pattern |
+
+### Review B — C2 Backend (commit `6ebc2d4`) — verdict CONTAINED
+
+| # | Sev | Onde | O quê | Route |
+|---|-----|------|-------|-------|
+| **B1** | MEDIUM | `models/pricing.py` | `service_id`, `frequency_id`, `location_id`, `extra_id` são `str` sem validação UUID format. UUID malformed → 500 unhandled. | **C6 pre-cutover blocker** — trocar por `UUID4` Pydantic type OU `field_validator` |
+| **B2** | MEDIUM | `PricingPreviewRequest.extras` | Sem `max_length`. DoS via lista de 10k extras (cada uma → query DB). | **C6 pre-cutover blocker** — `Field(default_factory=list, max_length=50)` |
+| **B3** | MEDIUM | `adjustment_amount` | Sem bounds. Owner pode passar `-999999.99` → prejuízo real via booking confirmado. | **C6 pre-cutover blocker** — `Field(ge=-10000, le=10000)` |
+| **B4** | MEDIUM | `pricing_routes.py:95` | `HTTPException(detail=str(exc))` vaza `business_id` UUID interno. Multi-tenancy leak potencial. | **C6 pre-cutover blocker** — sanitize detail + log full internally |
+| **B5** | LOW | `pricing_routes.py` docstring | Rate limit global não verificado contra AC3 (60/min). | **C6** — @qa valida config global |
+| **B6** | LOW | `pricing_engine.py` branch `service_metadata` | `if not isinstance(service_metadata, dict)` é branch morto (Pydantic bloqueia antes). | **Backlog** — remover OU test unit direto |
+| **B7** | LOW | `test_pricing_preview_endpoint.py` | `uuid4()` random pode colidir. | **Backlog** — usar UUID constante determinística |
+| **B8** | LOW | `PricingPreviewRequest._validate_scheduled_date` | Pydantic valida ISO + engine valida novamente. DRY violation. | **Backlog** — engine como SSOT |
+
+### Routing consolidado
+
+| Destino | Findings |
+|---------|----------|
+| **C4 UI** (esta sessão) | A3, A5 — a11y checklist + AbortController pattern |
+| **C5 (pré-C5b)** | A1 (i18n ES/PT), A2 (endpoints faltantes) |
+| **C6 QA Gate (pre-cutover blockers)** | B1, B2, B3, B4, B5 — security hardening obrigatório antes de deploy |
+| **Backlog livre** | A4, B6, B7, B8 — qualidade/manutenibilidade |
+
+**Decisão:** prosseguir para C4. Nenhum finding bloqueia implementação UI imediata.
+
+---
+
 ## Change log
 
 | Date | Version | Change | Author |
