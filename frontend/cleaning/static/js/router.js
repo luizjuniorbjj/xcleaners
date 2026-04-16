@@ -18,6 +18,8 @@ window.CleanRouter = {
     '/chat':             { module: 'owner/chat-monitor.js', roles: ['owner'], plan: 'intermediate', title: 'AI Chat' },
     '/onboarding':       { module: 'owner/onboarding.js', roles: ['owner'], title: 'Setup Wizard' },
     '/services':         { module: 'owner/services.js', roles: ['owner'], title: 'Services' },
+    '/pricing':          { module: 'owner/pricing-manager.js', roles: ['owner'], title: 'Pricing Formulas' },
+    '/extras':           { module: 'owner/extras-manager.js', roles: ['owner'], title: 'Extras' },
     '/reports':          { module: 'owner/reports.js', roles: ['owner'], title: 'Reports' },
     '/settings':         { module: 'owner/settings.js', roles: ['owner'], title: 'Settings' },
     '/my-bookings':      { module: 'homeowner/my-bookings.js', roles: ['homeowner'], title: 'My Bookings' },

@@ -347,6 +347,10 @@ window.Xcleaners = {
         { label: 'Clients', route: '/clients', icon: 'clients' },
         ...(this._currentPlan === 'maximum' ? [{ label: 'CRM / Leads', route: '/crm', icon: 'crm' }] : []),
       ]},
+      { label: 'Pricing', items: [
+        { label: 'Formulas', route: '/pricing', icon: 'invoices' },
+        { label: 'Extras', route: '/extras', icon: 'settings' },
+      ]},
       { label: 'Finance', items: [
         { label: 'Invoices', route: '/invoices', icon: 'invoices' },
         { label: 'Reports', route: '/reports', icon: 'reports' },
@@ -639,7 +643,7 @@ window.Xcleaners = {
   _handleSSEEvent(data) {
     console.log('[SSE] Event:', data.event, data);
     // Dispatch custom event for modules to listen to
-    window.dispatchEvent(new CustomEvent('cleanclaw:sse', { detail: data }));
+    window.dispatchEvent(new CustomEvent('xcleaners:sse', { detail: data }));
   },
 
   // ----- Online/Offline -----
