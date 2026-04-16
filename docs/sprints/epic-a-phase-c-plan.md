@@ -232,6 +232,25 @@ Cada box marcado = commit local + checkpoint updated + sprint plan entry atualiz
 
 ---
 
+## Smith C1 — Backlog Registrado (2026-04-16)
+
+Verdict adversarial de @smith sobre commit `3555508`: **CONTAINED** — entrega aceitável com ressalvas. Nenhum CRITICAL/HIGH. Findings abaixo são follow-ups, **não** re-trabalho obrigatório. C2 pode prosseguir sem bloqueio.
+
+| # | Sev | Onde | O quê | Roteamento |
+|---|-----|------|-------|------------|
+| **M1** | MEDIUM | `tests/test_pricing_engine.py::test_snapshot_immutable_after_booking` | Teste muta override/formula mas só faz readback do DB — não exercita engine pós-mutação. Imutabilidade verdadeira seria: mutar → criar SEGUNDO booking → provar que NOVO tem novo valor e VELHO preserva snapshot. | **C6** — fortalecer test criando booking comparativo após mutação |
+| **M2** | MEDIUM | `schedule.py /schedule/generate` | Recurring bookings chamam engine com `frequency_id=None` (R9 open — `cleaning_client_schedules` sem frequency_id). Engine → `discount_pct=0` silenciosamente. Preço calculado pode divergir de `sched.agreed_price` sem warning. | **C7** pre-cutover Ana cross-check pega isto; curto prazo: log warning quando `\|calculated − agreed_price\| > $0.50` |
+| **M3** | MEDIUM | `schedule.py` fallback path (`except PricingConfigError`) | Graceful fallback insere booking sem `price_snapshot`, `tax_amount`, `discount_amount`. Dashboards que leem snapshot farão split inconsistente entre priced vs fallback. | **Backlog** — fallback deveria gravar snapshot `{"fallback": true, "reason": ...}` em vez de NULL |
+| **L1** | LOW | `booking_service.create_booking_with_pricing` | Zero validação cross-tenant: não checa se `client_id`/`service_id` pertencem ao `business_id` passado. Endpoint atual protege via `user["business_id"]`, mas helper exposto para uso direto sem guard. | **Backlog** — adicionar assert nos FKs ou documentar que helper depende do caller para enforcement |
+| **L2** | LOW | `booking_service.recalculate_booking_snapshot` | Zero testes. Coverage 64%. Função terá endpoint apenas em C6 — aceitável postergar. | **C6** — endpoint + audit log + 2 tests |
+
+**Resumo do roteamento:**
+- **C6 (QA + Smith final):** M1, L2 — fortalecer testes de imutabilidade + cobrir recalculate
+- **C7 (Deploy staging + Ana cross-check):** M2 — validação empírica com dados reais
+- **Backlog (sem sessão atribuída):** M3, L1 — hardening de dados e segurança
+
+---
+
 ## Change log
 
 | Date | Version | Change | Author |
