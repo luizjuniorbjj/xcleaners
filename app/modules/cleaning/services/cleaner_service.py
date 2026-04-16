@@ -347,6 +347,26 @@ async def check_out(
         "actual_duration_minutes": actual_duration,
     })
 
+    # Materialize cleaner earnings (idempotent via UNIQUE booking_id+cleaner_id).
+    # Lazy import to avoid circular dependency with payroll_service → cleaner_service.
+    try:
+        from app.modules.cleaning.services.payroll_service import (
+            calculate_cleaner_earnings,
+            PayrollError,
+        )
+        await calculate_cleaner_earnings(db, booking_id)
+    except PayrollError as exc:
+        # Don't fail the checkout just because earnings couldn't be computed.
+        # Most common cause: booking has no lead_cleaner_id or NULL final_price.
+        logger.warning(
+            "cleaner_service: earnings calc skipped for booking=%s: %s",
+            booking_id, exc,
+        )
+    except Exception as exc:  # pragma: no cover — defensive log-only
+        logger.exception(
+            "cleaner_service: earnings calc failed for booking=%s", booking_id,
+        )
+
     return {
         "success": True,
         "booking_id": str(booking_id),
