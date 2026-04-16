@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.database import Database, get_db
 from app.modules.cleaning.middleware.role_guard import require_role
 from app.modules.cleaning.services.booking_service import (
+    create_booking_with_pricing,
     recalculate_booking_snapshot,
 )
 from app.modules.cleaning.services.pricing_engine import PricingConfigError
@@ -705,6 +706,88 @@ async def set_service_whitelist(
 # ===========================================================================
 # BOOKING RECALCULATE
 # ===========================================================================
+
+
+# ===========================================================================
+# BOOKING CREATE (via pricing engine — closes the last C4 gap)
+# ===========================================================================
+
+
+class BookingCreateRequest(BaseModel):
+    """Create booking with real pricing engine integration."""
+
+    client_id: str
+    service_id: str
+    scheduled_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    scheduled_start: str = Field(..., pattern=r"^\d{2}:\d{2}(:\d{2})?$")
+    estimated_duration_minutes: int = Field(default=120, ge=15, le=600)
+    team_id: Optional[str] = None
+    tier: Literal["basic", "deep", "premium"] = "basic"
+    extras: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
+    frequency_id: Optional[str] = None
+    adjustment_amount: Decimal = Field(
+        default=Decimal("0"), ge=Decimal("-10000"), le=Decimal("10000")
+    )
+    adjustment_reason: Optional[str] = Field(None, max_length=255)
+    location_id: Optional[str] = None
+    special_instructions: Optional[str] = Field(None, max_length=1000)
+    source: Literal["manual", "ai_chat", "booking_page", "phone", "referral"] = "manual"
+
+    @field_validator("client_id", "service_id", "team_id", "frequency_id", "location_id")
+    @classmethod
+    def _uuid(cls, v, info):
+        return _validate_uuid(v, info.field_name)
+
+
+@router.post("/bookings", status_code=201)
+async def create_booking(
+    slug: str,
+    body: BookingCreateRequest,
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """
+    Create a booking with pricing engine integration.
+
+    Runs calculate_booking_price → persists cleaning_bookings row with
+    final_price + discount/tax/adjustment columns + immutable
+    price_snapshot JSONB + cleaning_booking_extras rows.
+    """
+    try:
+        result = await create_booking_with_pricing(
+            db,
+            business_id=user["business_id"],
+            client_id=_uuid(body.client_id),
+            service_id=_uuid(body.service_id),
+            scheduled_date=body.scheduled_date,
+            scheduled_start=body.scheduled_start,
+            estimated_duration_minutes=body.estimated_duration_minutes,
+            team_id=_uuid(body.team_id) if body.team_id else None,
+            tier=body.tier,
+            extras=body.extras,
+            frequency_id=_uuid(body.frequency_id) if body.frequency_id else None,
+            adjustment_amount=body.adjustment_amount,
+            adjustment_reason=body.adjustment_reason,
+            location_id=_uuid(body.location_id) if body.location_id else None,
+            special_instructions=body.special_instructions,
+            source=body.source,
+            status="scheduled",
+        )
+        return {
+            "booking_id": result["booking_id"],
+            "final_price": str(result["breakdown"]["final_amount"]),
+            "extras_written": result["extras_written"],
+        }
+    except PricingConfigError as exc:
+        logger.warning("create booking failed: %s", exc)
+        msg = str(exc).lower()
+        if "formula" in msg:
+            public = "Pricing configuration incomplete."
+        elif "service not found" in msg:
+            public = "Service not found."
+        else:
+            public = "Pricing configuration error."
+        raise HTTPException(status_code=400, detail=public)
 
 
 @router.post("/bookings/{booking_id}/recalculate")
