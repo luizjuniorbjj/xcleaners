@@ -330,36 +330,87 @@ async def test_snapshot_immutable_after_booking(
     """
     ADR-001 Decision 2: price_snapshot in cleaning_bookings is immutable.
 
-    Scenario: create booking → snapshot written. Mutate formula + extras.
-    Re-read booking → snapshot unchanged.
+    Scenario: create booking via booking_service helper → snapshot persisted.
+    Mutate underlying formula + override price. Re-read booking → snapshot
+    (and final_price) unchanged.
     """
-    # This test requires booking creation endpoint OR direct SQL with calc
-    # Simplified: write snapshot directly, mutate, verify unchanged
-    snapshot = {
-        "final_amount": "225.50",
-        "subtotal": "250.00",
-        "tax_amount": "0.00",
-        "calculated_at": "2026-04-16T12:00:00Z",
-    }
-    booking_id = await db.pool.fetchval(
-        """
-        INSERT INTO cleaning_bookings
-            (business_id, client_id, service_id, scheduled_date, scheduled_start,
-             quoted_price, final_price, price_snapshot)
-        VALUES ($1,
-                (SELECT id FROM cleaning_clients WHERE business_id = $1 LIMIT 1),
-                (SELECT id FROM cleaning_services WHERE business_id = $1 LIMIT 1),
-                CURRENT_DATE, '10:00:00', 225.50, 225.50, $2::jsonb)
-        RETURNING id
-        """,
-        test_business_id,
-        # NOTE: test setup depends on existence of client + service. Integration
-        # variant of this test sets those up; here we skip if not present.
-    ) if False else None
-    pytest.skip(
-        "Snapshot immutability test requires booking integration harness. "
-        "Will be enabled once @dev completes booking creation flow."
+    from datetime import date, time
+    from app.modules.cleaning.services.booking_service import (
+        create_booking_with_pricing,
     )
+
+    # Service with override $200 @ basic
+    service_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_services (business_id, name, slug, tier, "
+        "bedrooms, bathrooms, base_price) "
+        "VALUES ($1, 'Immutable Svc', 'immutable-svc', 'basic', 1, 1, 200.00) "
+        "RETURNING id",
+        test_business_id,
+    )
+    await db.pool.execute(
+        "INSERT INTO cleaning_service_overrides (service_id, tier, price_override, is_active) "
+        "VALUES ($1, 'basic', 200.00, TRUE)",
+        service_id,
+    )
+    # Minimal client for FK satisfaction
+    client_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_clients (business_id, first_name, last_name, email) "
+        "VALUES ($1, 'Immut', 'Test', 'immut@test.local') RETURNING id",
+        test_business_id,
+    )
+
+    # Create booking with pricing (writes snapshot)
+    result = await create_booking_with_pricing(
+        db,
+        business_id=test_business_id,
+        client_id=client_id,
+        service_id=service_id,
+        scheduled_date=date(2026, 5, 1),
+        scheduled_start=time(10, 0, 0),
+        estimated_duration_minutes=120,
+        tier="basic",
+        extras=[],
+        frequency_id=None,
+        adjustment_amount=Decimal("0"),
+        location_id=test_location_id,
+        source="manual",
+        status="scheduled",
+    )
+    booking_id = result["booking_id"]
+    original_final = Decimal(str(result["breakdown"]["final_amount"]))
+    assert original_final == Decimal("200.00"), (
+        f"Pre-mutation final should be $200; got {original_final}"
+    )
+
+    # Mutate: bump override to $500 AND mutate formula
+    await db.pool.execute(
+        "UPDATE cleaning_service_overrides SET price_override = 500.00 "
+        "WHERE service_id = $1 AND tier = 'basic'",
+        service_id,
+    )
+    await db.pool.execute(
+        "UPDATE cleaning_pricing_formulas SET base_amount = base_amount + 999 "
+        "WHERE id = $1",
+        test_formula,
+    )
+
+    # Re-read booking — snapshot + final_price MUST be unchanged
+    row = await db.pool.fetchrow(
+        "SELECT final_price, price_snapshot FROM cleaning_bookings WHERE id = $1",
+        booking_id,
+    )
+    assert Decimal(str(row["final_price"])) == original_final, (
+        f"final_price mutated after formula/override change. "
+        f"Expected {original_final}, got {row['final_price']}"
+    )
+    import json
+    snapshot = json.loads(row["price_snapshot"]) if isinstance(
+        row["price_snapshot"], str
+    ) else row["price_snapshot"]
+    assert Decimal(str(snapshot["final_amount"])) == original_final, (
+        f"snapshot.final_amount mutated. Got {snapshot['final_amount']}"
+    )
+    assert snapshot["override_applied"] is True
 
 
 @pytest.mark.asyncio
@@ -647,17 +698,120 @@ async def test_booking_creation_writes_immutable_snapshot(
     db, test_business_id, test_location_id, test_formula
 ):
     """
-    Integration: when booking is confirmed (draft → scheduled), the pricing
-    engine result is persisted to cleaning_bookings.price_snapshot JSONB.
+    Integration: booking creation via booking_service.create_booking_with_pricing
+    writes price_snapshot JSONB matching pricing_engine output AND populates
+    pricing columns (final_price, tax_amount, discount_amount, adjustment_amount).
 
-    Validates Story 1.1 AC6 (snapshot immutable).
+    Validates Story 1.1 AC6 (snapshot immutable) + Task 6 wiring.
+    Exercises F-001: scheduled_date drives tax lookup (not CURRENT_DATE).
     """
-    pytest.skip(
-        "Booking creation endpoint required. Enable after @dev completes "
-        "Task 6 (Snapshot + Booking Confirmation). "
-        "Expected: POST /api/v1/clean/{slug}/bookings → cleaning_bookings "
-        "row with price_snapshot JSONB populated matching pricing_engine output."
+    from datetime import date, time
+    import json
+    from app.modules.cleaning.services.booking_service import (
+        create_booking_with_pricing,
     )
+
+    # F1-style scenario: $275 + $30 stairs, Weekly 15%, −$29.58 adjustment, 4.5% tax
+    service_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_services (business_id, name, slug, tier, "
+        "bedrooms, bathrooms, base_price) "
+        "VALUES ($1, 'Integration F1', 'integration-f1', 'basic', 2, 1, 275.00) "
+        "RETURNING id",
+        test_business_id,
+    )
+    await db.pool.execute(
+        "INSERT INTO cleaning_service_overrides (service_id, tier, price_override, is_active) "
+        "VALUES ($1, 'basic', 275.00, TRUE)",
+        service_id,
+    )
+    extra_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_extras (business_id, name, price) "
+        "VALUES ($1, 'Stairs-Integration', 30.00) RETURNING id",
+        test_business_id,
+    )
+    await db.pool.execute(
+        "INSERT INTO cleaning_service_extras (service_id, extra_id) VALUES ($1, $2)",
+        service_id, extra_id,
+    )
+    frequency_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_frequencies (business_id, name, discount_pct) "
+        "VALUES ($1, 'Weekly Integration', 15.00) RETURNING id",
+        test_business_id,
+    )
+    await db.pool.execute(
+        "INSERT INTO cleaning_sales_taxes "
+        "(business_id, location_id, tax_pct, effective_date) "
+        "VALUES ($1, $2, 4.50, CURRENT_DATE - INTERVAL '1 day')",
+        test_business_id, test_location_id,
+    )
+    client_id = await db.pool.fetchval(
+        "INSERT INTO cleaning_clients (business_id, first_name, last_name, email) "
+        "VALUES ($1, 'Int', 'Test', 'int@test.local') RETURNING id",
+        test_business_id,
+    )
+
+    scheduled = date(2026, 5, 15)
+    result = await create_booking_with_pricing(
+        db,
+        business_id=test_business_id,
+        client_id=client_id,
+        service_id=service_id,
+        scheduled_date=scheduled,
+        scheduled_start=time(9, 0, 0),
+        estimated_duration_minutes=180,
+        tier="basic",
+        extras=[{"extra_id": extra_id, "qty": 1}],
+        frequency_id=frequency_id,
+        adjustment_amount=Decimal("-29.58"),
+        adjustment_reason="Complaint refund",
+        location_id=test_location_id,
+        source="manual",
+        status="scheduled",
+    )
+
+    # Breakdown matches F1 fixture: final $240.01
+    breakdown = result["breakdown"]
+    assert Decimal(str(breakdown["final_amount"])) == Decimal("240.01"), (
+        f"F1 replica mismatch. Got {breakdown['final_amount']}"
+    )
+    assert result["extras_written"] == 1
+
+    # DB row must reflect full pricing integration
+    row = await db.pool.fetchrow(
+        """SELECT final_price, discount_amount, tax_amount,
+                  adjustment_amount, frequency_id, location_id,
+                  price_snapshot, scheduled_date, status, source
+           FROM cleaning_bookings WHERE id = $1""",
+        result["booking_id"],
+    )
+    assert row is not None
+    assert Decimal(str(row["final_price"])) == Decimal("240.01")
+    assert Decimal(str(row["tax_amount"])) == Decimal("10.34")
+    assert Decimal(str(row["discount_amount"])) == Decimal("45.75")
+    assert Decimal(str(row["adjustment_amount"])) == Decimal("-29.58")
+    assert row["frequency_id"] == frequency_id
+    assert row["location_id"] == test_location_id
+    assert row["scheduled_date"] == scheduled
+    assert row["status"] == "scheduled"
+    assert row["source"] == "manual"
+
+    # Snapshot is valid JSONB with canonical fields
+    snapshot = json.loads(row["price_snapshot"]) if isinstance(
+        row["price_snapshot"], str
+    ) else row["price_snapshot"]
+    assert Decimal(str(snapshot["final_amount"])) == Decimal("240.01")
+    assert Decimal(str(snapshot["amount_before_tax"])) == Decimal("229.67")
+    assert snapshot["override_applied"] is True
+    assert snapshot["tier"] == "basic"
+    assert len(snapshot["extras"]) == 1
+    assert snapshot["extras"][0]["name"] == "Stairs-Integration"
+
+    # cleaning_booking_extras row written
+    extras_count = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM cleaning_booking_extras WHERE booking_id = $1",
+        result["booking_id"],
+    )
+    assert extras_count == 1
 
 
 # ===========================================================================

@@ -594,11 +594,19 @@ async def generate_schedule(
 ):
     """
     Trigger schedule generation for a specific date.
-    This is a placeholder that creates bookings from client schedules.
-    The full S2.4 schedule engine will replace this logic.
+
+    Creates bookings from recurring client schedules and runs each through
+    the pricing engine (Story 1.1 Task 6): each booking gets final_price,
+    tax/discount/adjustment columns, and an immutable price_snapshot JSONB.
+
+    Graceful fallback: if pricing engine is missing config (no formula,
+    no override), falls back to sched.agreed_price with an empty snapshot
+    so schedule generation never halts the dashboard.
     """
     from app.modules.cleaning.services.schedule_service import list_schedules_due_on
     from app.modules.cleaning.services.change_propagator import on_schedule_generated
+    from app.modules.cleaning.services.booking_service import create_booking_with_pricing
+    from app.modules.cleaning.services.pricing_engine import PricingConfigError
 
     business_id = user["business_id"]
 
@@ -635,45 +643,71 @@ async def generate_schedule(
     due_schedules = await list_schedules_due_on(db, business_id, target)
 
     created_count = 0
-    team_jobs = {}  # team_id -> count
+    priced_count = 0
+    fallback_count = 0
+    team_jobs: dict[str, int] = {}
 
     for sched in due_schedules:
-        # Create booking from schedule
         team_id = sched.get("preferred_team_id")
         start_time = sched.get("preferred_time_start") or "09:00:00"
         duration = sched.get("estimated_duration_minutes") or 120
 
         try:
-            st = datetime.strptime(f"{target_date} {start_time}", "%Y-%m-%d %H:%M:%S")
+            start_parsed = datetime.strptime(start_time, "%H:%M:%S").time()
         except ValueError:
             try:
-                st = datetime.strptime(f"{target_date} {start_time}", "%Y-%m-%d %H:%M")
+                start_parsed = datetime.strptime(start_time, "%H:%M").time()
             except ValueError:
-                st = datetime.strptime(f"{target_date} 09:00:00", "%Y-%m-%d %H:%M:%S")
+                start_parsed = datetime.strptime("09:00:00", "%H:%M:%S").time()
 
-        et = st + timedelta(minutes=duration)
+        booking_id: str | None = None
+        try:
+            result = await create_booking_with_pricing(
+                db,
+                business_id=business_id,
+                client_id=sched["client_id"],
+                service_id=sched["service_id"],
+                scheduled_date=target,
+                scheduled_start=start_parsed,
+                estimated_duration_minutes=duration,
+                team_id=team_id,
+                recurring_schedule_id=sched["id"],
+                source="recurring",
+                status="scheduled",
+            )
+            booking_id = result["booking_id"]
+            priced_count += 1
+        except PricingConfigError as exc:
+            logger.warning(
+                "schedule/generate: pricing engine fallback for schedule=%s: %s",
+                sched.get("id"), exc,
+            )
+            end_time = (datetime.combine(target, start_parsed)
+                        + timedelta(minutes=duration)).time()
+            row = await db.pool.fetchrow(
+                """INSERT INTO cleaning_bookings
+                   (business_id, client_id, service_id, recurring_schedule_id,
+                    scheduled_date, scheduled_start, scheduled_end,
+                    estimated_duration_minutes, team_id,
+                    quoted_price, final_price, status, source)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10,
+                           'scheduled', 'recurring')
+                   RETURNING id""",
+                business_id,
+                sched["client_id"],
+                sched["service_id"],
+                sched["id"],
+                target,
+                start_parsed,
+                end_time,
+                duration,
+                team_id,
+                sched.get("agreed_price"),
+            )
+            booking_id = str(row["id"]) if row else None
+            fallback_count += 1
 
-        row = await db.pool.fetchrow(
-            """INSERT INTO cleaning_bookings
-               (business_id, client_id, service_id, recurring_schedule_id,
-                scheduled_date, scheduled_start, scheduled_end,
-                estimated_duration_minutes, team_id,
-                quoted_price, status, source)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', 'recurring')
-               RETURNING id""",
-            business_id,
-            sched["client_id"],
-            sched["service_id"],
-            sched["id"],
-            to_date(target_date),
-            to_time(st.strftime("%H:%M:%S")),
-            to_time(et.strftime("%H:%M:%S")),
-            duration,
-            team_id,
-            sched.get("agreed_price"),
-        )
-
-        if row:
+        if booking_id:
             created_count += 1
             if team_id:
                 team_jobs[team_id] = team_jobs.get(team_id, 0) + 1
@@ -696,6 +730,8 @@ async def generate_schedule(
         "message": f"Generated {created_count} bookings for {target_date}",
         "date": target_date,
         "created": created_count,
+        "priced": priced_count,
+        "pricing_fallback": fallback_count,
         "teams_affected": len(team_jobs),
     }
 

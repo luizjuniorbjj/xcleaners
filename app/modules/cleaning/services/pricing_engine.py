@@ -75,7 +75,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date as date_cls, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal, TypedDict
 from uuid import UUID
@@ -261,19 +261,36 @@ async def _get_frequency(db: Database, frequency_id: UUID | None) -> dict | None
     )
 
 
-async def _get_tax_pct(db: Database, location_id: UUID | None) -> Decimal:
+async def _get_tax_pct(
+    db: Database,
+    location_id: UUID | None,
+    as_of_date: date_cls | None = None,
+) -> Decimal:
     """
-    Fetch most recent effective sales tax rate for location.
+    Fetch most recent effective sales tax rate for location as of a given date.
 
-    Returns Decimal('0') with warning log if:
-      - location_id is None
-      - no active tax row exists for location at or before today
+    Fix F-001: the effective_date filter uses `as_of_date` (booking's
+    scheduled_date), NOT CURRENT_DATE. This preserves historical correctness
+    when a tax rate changed between booking creation and service execution —
+    the rate applicable is the one in effect on the date the service is/was
+    rendered, per US sales tax rules.
 
-    This graceful fallback allows booking creation in markets without tax config.
+    Args:
+      db: Database wrapper.
+      location_id: cleaning_areas row; None triggers graceful fallback.
+      as_of_date: reference date for tax lookup. Defaults to today (UTC)
+                  when None, preserving legacy preview-style behavior.
+
+    Returns:
+      Decimal tax percentage. Decimal('0') with warning log if:
+        - location_id is None
+        - no active tax row exists for location at or before `as_of_date`
     """
     if location_id is None:
         logger.warning("pricing_engine: location_id missing; tax_pct=0")
         return Decimal("0")
+
+    reference_date = as_of_date if as_of_date is not None else datetime.now(timezone.utc).date()
 
     row = await db.pool.fetchrow(
         """
@@ -281,16 +298,18 @@ async def _get_tax_pct(db: Database, location_id: UUID | None) -> Decimal:
         FROM cleaning_sales_taxes
         WHERE location_id = $1
           AND is_archived = FALSE
-          AND effective_date <= CURRENT_DATE
+          AND effective_date <= $2
         ORDER BY effective_date DESC
         LIMIT 1
         """,
         location_id,
+        reference_date,
     )
     if row is None:
         logger.warning(
-            "pricing_engine: no sales_tax row for location_id=%s; tax_pct=0",
+            "pricing_engine: no sales_tax row for location_id=%s as_of=%s; tax_pct=0",
             location_id,
+            reference_date,
         )
         return Decimal("0")
     return _to_decimal(row["tax_pct"])
@@ -347,6 +366,7 @@ async def calculate_booking_price(
     adjustment_amount: Decimal | int | float | str = Decimal("0"),
     adjustment_reason: str | None = None,
     location_id: UUID | None = None,
+    scheduled_date: date_cls | str | None = None,
     db: Database | None = None,
 ) -> PriceBreakdown:
     """
@@ -361,6 +381,9 @@ async def calculate_booking_price(
         adjustment_amount: signed manual adjustment applied BEFORE tax.
         adjustment_reason: free-text for audit (persisted in breakdown).
         location_id: cleaning_areas row; used for tax lookup + location-specific formula.
+        scheduled_date: booking's scheduled service date for historical tax lookup
+            (Fix F-001). Accepts date or ISO-8601 str ('YYYY-MM-DD'). Defaults to
+            today (UTC) when None — preview-style lookup.
         db: Database instance (asyncpg pool wrapper).
 
     Returns:
@@ -382,6 +405,27 @@ async def calculate_booking_price(
     if tier_lower not in _VALID_TIERS:
         raise PricingConfigError(
             f"Invalid tier '{tier}'. Must be one of {_VALID_TIERS}."
+        )
+
+    # Normalize scheduled_date (F-001): accept date, ISO str, or None
+    as_of_date: date_cls | None
+    if scheduled_date is None:
+        as_of_date = None
+    elif isinstance(scheduled_date, date_cls) and not isinstance(scheduled_date, datetime):
+        as_of_date = scheduled_date
+    elif isinstance(scheduled_date, datetime):
+        as_of_date = scheduled_date.date()
+    elif isinstance(scheduled_date, str):
+        try:
+            as_of_date = date_cls.fromisoformat(scheduled_date[:10])
+        except ValueError as exc:
+            raise PricingConfigError(
+                f"Invalid scheduled_date '{scheduled_date}'. Expected ISO-8601 YYYY-MM-DD."
+            ) from exc
+    else:
+        raise PricingConfigError(
+            f"Invalid scheduled_date type {type(scheduled_date).__name__}; "
+            f"expected date, str, or None."
         )
 
     adjustment = _to_decimal(adjustment_amount)
@@ -455,7 +499,8 @@ async def calculate_booking_price(
     amount_before_tax = subtotal - discount_amount + adjustment
 
     # ------- Step 6: tax (on liquid base — ADR Decision 6) -----------------
-    tax_pct = await _get_tax_pct(db, location_id)
+    # F-001: use scheduled_date for historical tax lookup (not CURRENT_DATE)
+    tax_pct = await _get_tax_pct(db, location_id, as_of_date)
     tax_amount = _round_money(amount_before_tax * tax_pct / Decimal("100"))
 
     # ------- Step 7: final -----------------------------------------------
