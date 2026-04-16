@@ -350,6 +350,8 @@ window.Xcleaners = {
       { label: 'Pricing', items: [
         { label: 'Formulas', route: '/pricing', icon: 'invoices' },
         { label: 'Extras', route: '/extras', icon: 'settings' },
+        { label: 'Frequencies', route: '/frequencies', icon: 'schedule' },
+        { label: 'Taxes', route: '/taxes', icon: 'reports' },
       ]},
       { label: 'Finance', items: [
         { label: 'Invoices', route: '/invoices', icon: 'invoices' },

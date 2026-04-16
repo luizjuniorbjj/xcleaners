@@ -224,7 +224,7 @@ Antes de sair de qualquer sessão:
 - [x] C3 — UX Specs (Sati) ✓ (2026-04-16) — `docs/ux/story-1.1-ui-specs.md` (1090 linhas: 4 modules wireframes + preview pane + interaction flows + i18n EN/ES/PT + acceptance checklists)
 - [x] C4 — UI Extend (services.js + bookings.js) ✓ (2026-04-16) — services.js: tier radio + BR/BA + Formula(debounced 300ms via /pricing/preview) + Override dual display + OVERRIDE badge + revert modal. bookings.js: detail modal com breakdown READ-ONLY do price_snapshot + Recalculate hint/modal + read-only em status terminal. cleaning-api.js: AbortController support (A5 finding fixed). **C4b deferred**: preview reativo de CRIAÇÃO de booking (schedule.js form) não modificado — pertence a módulo fora do escopo de bookings.js list.
 - [x] C5a — Pricing + Extras managers ✓ (2026-04-16) — pricing-manager.js + extras-manager.js NEW; rotas `/pricing` + `/extras` em router.js; grupo "Pricing" no sidebar (app.js). Graceful 404 para endpoints CRUD pending (Smith A2).
-- [ ] C5b — Frequencies + Taxes managers
+- [x] C5b — Frequencies + Taxes managers ✓ (2026-04-16) — frequencies-manager.js (CRUD + atomic set-default + archive guards) + taxes-manager.js (temporal history + "current" badge + immutable-after-use + chronology warning). Router + sidebar completos (grupo Pricing com 4 entries). Graceful 404 para endpoints pending.
 - [ ] C6 — QA + Smith final
 - [ ] C7 — Deploy staging + Cross-check Ana
 

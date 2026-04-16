@@ -20,6 +20,8 @@ window.CleanRouter = {
     '/services':         { module: 'owner/services.js', roles: ['owner'], title: 'Services' },
     '/pricing':          { module: 'owner/pricing-manager.js', roles: ['owner'], title: 'Pricing Formulas' },
     '/extras':           { module: 'owner/extras-manager.js', roles: ['owner'], title: 'Extras' },
+    '/frequencies':      { module: 'owner/frequencies-manager.js', roles: ['owner'], title: 'Frequencies' },
+    '/taxes':            { module: 'owner/taxes-manager.js', roles: ['owner'], title: 'Sales Taxes' },
     '/reports':          { module: 'owner/reports.js', roles: ['owner'], title: 'Reports' },
     '/settings':         { module: 'owner/settings.js', roles: ['owner'], title: 'Settings' },
     '/my-bookings':      { module: 'homeowner/my-bookings.js', roles: ['homeowner'], title: 'My Bookings' },
