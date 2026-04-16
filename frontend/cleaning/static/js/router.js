@@ -25,6 +25,7 @@ window.CleanRouter = {
     '/payroll':          { module: 'owner/payroll-manager.js', roles: ['owner'], title: 'Payroll' },
     '/reports':          { module: 'owner/reports.js', roles: ['owner'], title: 'Reports' },
     '/settings':         { module: 'owner/settings.js', roles: ['owner'], title: 'Settings' },
+    '/settings/payments': { module: 'owner/payments-settings.js', roles: ['owner'], title: 'Payments' },
     '/my-bookings':      { module: 'homeowner/my-bookings.js', roles: ['homeowner'], title: 'My Bookings' },
     '/my-bookings/:id':  { module: 'homeowner/booking-detail.js', roles: ['homeowner'], title: 'Booking Detail' },
     '/my-invoices':      { module: 'homeowner/my-invoices.js', roles: ['homeowner'], title: 'My Invoices' },
