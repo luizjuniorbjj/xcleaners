@@ -21,6 +21,7 @@ import json
 import logging
 from typing import Callable, Optional
 
+import asyncpg
 from fastapi import Depends, HTTPException, Request
 
 from app.auth import get_current_user
@@ -64,16 +65,20 @@ async def get_business_plan(business_id: str, db: Database) -> str:
             logger.warning("[PLAN_CACHE] Redis read error: %s", e)
 
     # 2. Check business_subscriptions for active subscription
-    plan = await db.pool.fetchval(
-        """
-        SELECT plan FROM business_subscriptions
-        WHERE business_id = $1
-          AND status = 'active'
-        ORDER BY created_at DESC
-        LIMIT 1
-        """,
-        business_id,
-    )
+    try:
+        plan = await db.pool.fetchval(
+            """
+            SELECT plan FROM business_subscriptions
+            WHERE business_id = $1
+              AND status = 'active'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            business_id,
+        )
+    except asyncpg.exceptions.UndefinedTableError:
+        # Table not present in xcleaners standalone DB — fall through to businesses.plan
+        plan = None
 
     # 3. Fall back to businesses.plan column
     if not plan:
