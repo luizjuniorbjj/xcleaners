@@ -296,3 +296,88 @@ async def detach_payment_method(
     stripe.PaymentMethod.detach(
         payment_method_id, stripe_account=connected_account_id
     )
+
+
+# ============================================
+# OFF_SESSION CHARGE (auto-bill saved card)
+# ============================================
+
+async def charge_booking_off_session(
+    connected_account_id: str,
+    customer_id: str,
+    amount_cents: int,
+    booking_id: str,
+    currency: str = "usd",
+) -> dict:
+    """
+    Charge a saved default payment method off_session for a booking.
+
+    Idempotent via stripe idempotency_key = "booking-{booking_id}".
+    The customer MUST already have a default payment method attached
+    (via SetupIntent flow). Does NOT propagate exceptions — returns
+    a structured dict the caller can persist to booking.payment_status.
+
+    Returns on SUCCESS:
+        {
+            "success": True,
+            "payment_intent_id": "pi_xxx",
+            "status": "succeeded" | "processing" | "requires_action",
+        }
+
+    Returns on FAILURE (card declined, SCA required, config error):
+        {
+            "success": False,
+            "status": "requires_action" | "declined" | "failed",
+            "error": "<message>",
+            "payment_intent_id": "pi_xxx" | None,
+        }
+    """
+    if not STRIPE_SECRET_KEY:
+        return {
+            "success": False,
+            "status": "failed",
+            "error": "Stripe not configured",
+            "payment_intent_id": None,
+        }
+
+    idempotency_key = f"booking-{booking_id}"
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency=currency,
+            customer=customer_id,
+            off_session=True,
+            confirm=True,
+            stripe_account=connected_account_id,
+            idempotency_key=idempotency_key,
+            metadata={"xcleaners_booking_id": str(booking_id)},
+        )
+        return {
+            "success": True,
+            "payment_intent_id": intent.id,
+            "status": intent.status,  # 'succeeded' | 'processing' | 'requires_action'
+        }
+    except stripe.error.CardError as exc:
+        # Card declined OR SCA (authentication) required
+        err_obj = getattr(exc, "error", None)
+        code = getattr(err_obj, "code", "") if err_obj else ""
+        pi_id = None
+        pi_obj = getattr(err_obj, "payment_intent", None) if err_obj else None
+        if pi_obj is not None:
+            pi_id = getattr(pi_obj, "id", None)
+
+        status = "requires_action" if code == "authentication_required" else "declined"
+        return {
+            "success": False,
+            "status": status,
+            "error": getattr(exc, "user_message", None) or str(exc),
+            "payment_intent_id": pi_id,
+        }
+    except stripe.error.StripeError as exc:
+        return {
+            "success": False,
+            "status": "failed",
+            "error": str(exc),
+            "payment_intent_id": None,
+        }

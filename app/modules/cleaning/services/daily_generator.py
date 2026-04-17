@@ -36,6 +36,9 @@ from app.modules.cleaning.services._type_helpers import to_time
 # Sprint D Track A (AC2): delegate booking persistence to booking_service so
 # recurring bookings pass through pricing_engine (formula + extras + discount
 # + adjustment + tax + snapshot). Closes Smith C1 M2 + R9.
+from app.modules.cleaning.services.booking_charge_service import (
+    try_auto_charge_booking,
+)
 from app.modules.cleaning.services.booking_service import (
     create_booking_with_pricing,
 )
@@ -824,6 +827,16 @@ async def _persist_assignments(
             breakdown["override_applied"],
             result["extras_written"],
         )
+
+        # [3S-2] Best-effort auto-charge. Never raises; gates inside the helper.
+        try:
+            await try_auto_charge_booking(db, result["booking_id"])
+        except Exception as exc:  # noqa: BLE001 — defensive: never break booking flow
+            logger.warning(
+                "[RECURRING] auto-charge unexpected error for booking=%s: %s",
+                result["booking_id"], exc,
+            )
+
         persisted.append(assignment)
 
     logger.info(
