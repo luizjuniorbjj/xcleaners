@@ -53,6 +53,10 @@ window.SSEClient = {
       clearTimeout(this._retryTimer);
       this._retryTimer = null;
     }
+    if (this._stabilityTimer) {
+      clearTimeout(this._stabilityTimer);
+      this._stabilityTimer = null;
+    }
     this._stopPolling();
     this._updateStatusUI('disconnected');
   },
@@ -116,7 +120,14 @@ window.SSEClient = {
       console.log('[SSE] Connected to', this._url);
       this._connected = true;
       this._mode = 'sse';
-      this._retryCount = 0;
+      // Reset retry count only after a stable period — server may open the
+      // connection (HTTP 200) and immediately error (e.g. Redis pubsub down),
+      // which would otherwise cause an infinite "Retry 1/3" loop.
+      if (this._stabilityTimer) clearTimeout(this._stabilityTimer);
+      this._stabilityTimer = setTimeout(() => {
+        this._retryCount = 0;
+        this._stabilityTimer = null;
+      }, 10000);
       this._stopPolling();
       this._updateStatusUI('connected');
     };
@@ -157,6 +168,10 @@ window.SSEClient = {
   },
 
   _onSSEError() {
+    if (this._stabilityTimer) {
+      clearTimeout(this._stabilityTimer);
+      this._stabilityTimer = null;
+    }
     if (this._eventSource) {
       this._eventSource.close();
       this._eventSource = null;

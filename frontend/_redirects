@@ -1,3 +1,5 @@
 /investor-deck.html /investor-deck.html 200
 /pitch.html /pitch.html 200
 /cleaning/app/* /cleaning/app.html 200
+/cleaning/static/img/logo.png /static/img/logo.png 200
+/cleaning/static/img/* /static/img/:splat 200
