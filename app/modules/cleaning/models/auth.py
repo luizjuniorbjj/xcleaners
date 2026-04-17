@@ -16,8 +16,11 @@ from pydantic import BaseModel, EmailStr, Field
 PLAN_HIERARCHY = ["basic", "intermediate", "maximum"]
 
 PLAN_LIMITS = {
-    "basic": {"teams": 1, "clients": 50, "sms_monthly": 100},
-    "intermediate": {"teams": -1, "clients": 200, "sms_monthly": 500},
+    # Single-tier policy: all businesses are premium. Numeric limits kept
+    # per plan for backward compatibility with check_limit() but all are
+    # unlimited (-1). SMS kept bounded on basic to protect from abuse only.
+    "basic": {"teams": -1, "clients": -1, "sms_monthly": 500},
+    "intermediate": {"teams": -1, "clients": -1, "sms_monthly": 1000},
     "maximum": {"teams": -1, "clients": -1, "sms_monthly": 2000},  # -1 = unlimited
 }
 
