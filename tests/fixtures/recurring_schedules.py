@@ -31,12 +31,17 @@ from typing import Any
 # ============================================
 
 async def create_test_business(db, slug: str = "test-biz") -> str:
-    """Create a minimal business + owner for isolation. Returns business_id."""
+    """Create a minimal business + owner for isolation. Returns business_id.
+
+    Owner user is created but NOT linked via FK in businesses (xcleaners schema
+    does not carry user_id on businesses; ownership lives in cleaning_user_roles).
+    The owner is left orphan and reaped by tear_down_business via email pattern.
+    """
     owner_id = uuid.uuid4()
     await db.pool.execute(
         """
-        INSERT INTO users (id, email, password_hash, name, role, status, created_at, updated_at)
-        VALUES ($1, $2, 'test', 'Test Owner', 'user', 'active', NOW(), NOW())
+        INSERT INTO users (id, email, hashed_password, nome, role, is_active, created_at, updated_at)
+        VALUES ($1, $2, 'test', 'Test Owner', 'subscriber', TRUE, NOW(), NOW())
         """,
         owner_id,
         f"owner-{owner_id}@test.local",
@@ -46,20 +51,13 @@ async def create_test_business(db, slug: str = "test-biz") -> str:
     await db.pool.execute(
         """
         INSERT INTO businesses (
-            id, user_id, name, slug, whatsapp_phone, phone,
-            business_type, primary_color, welcome_message, status, plan,
-            created_at, updated_at
+            id, slug, name, timezone, status, created_at, updated_at
         )
-        VALUES (
-            $1, $2, $3, $4, '+15551234567', '+15551234567',
-            'cleaning', '#4285F4', 'hi', 'active', 'basic',
-            NOW(), NOW()
-        )
+        VALUES ($1, $2, $3, 'America/New_York', 'active', NOW(), NOW())
         """,
         biz_id,
-        owner_id,
-        f"Test Biz {slug}",
         f"{slug}-{uuid.uuid4().hex[:8]}",
+        f"Test Biz {slug}",
     )
 
     # Seed default frequencies + formula + default area (mimics migration 021)
@@ -124,19 +122,18 @@ async def _seed_defaults(db, biz_id: uuid.UUID) -> None:
 
 
 async def tear_down_business(db, business_id: str) -> None:
-    """Delete business — CASCADE removes all linked rows."""
-    # Also remove the owner user(s)
-    await db.pool.execute(
-        """
-        DELETE FROM users WHERE id IN (
-            SELECT user_id FROM businesses WHERE id = $1
-        )
-        """,
-        uuid.UUID(business_id),
-    )
+    """Delete business — CASCADE removes all linked rows.
+
+    Test owner users are reaped opportunistically via email pattern since
+    xcleaners businesses does not carry a user_id FK.
+    """
     await db.pool.execute(
         "DELETE FROM businesses WHERE id = $1",
         uuid.UUID(business_id),
+    )
+    # Best-effort cleanup of orphan test owners (idempotent, scoped by pattern)
+    await db.pool.execute(
+        "DELETE FROM users WHERE email LIKE 'owner-%@test.local'"
     )
 
 
@@ -174,14 +171,15 @@ async def create_test_service(
     bathrooms: int = 1,
 ) -> str:
     sid = uuid.uuid4()
+    slug = f"{name.lower().replace(' ', '-').replace('/', '-')}-{sid.hex[:8]}"
     await db.pool.execute(
         """
         INSERT INTO cleaning_services (
-            id, business_id, name, tier, bedrooms, bathrooms,
+            id, business_id, name, slug, tier, bedrooms, bathrooms,
             is_active, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, NOW(), NOW())
         """,
-        sid, uuid.UUID(business_id), name, tier, bedrooms, bathrooms,
+        sid, uuid.UUID(business_id), name, slug, tier, bedrooms, bathrooms,
     )
     return str(sid)
 

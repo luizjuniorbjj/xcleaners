@@ -4,22 +4,21 @@ import os
 import importlib
 
 
-def test_secret_key_required():
-    """SECRET_KEY must be set — app should fail without it."""
-    # Ensure the module is imported first (with the key present from conftest)
+def test_secret_key_required(monkeypatch):
+    """SECRET_KEY must be set — app should fail with empty/missing value.
+
+    Sets SECRET_KEY="" so load_dotenv(override=False) won't re-inject from .env.
+    config.py's `if not SECRET_KEY` covers both missing and empty.
+    """
     import app.config as config_module
 
-    original = os.environ.get("SECRET_KEY")
-    os.environ.pop("SECRET_KEY", None)
+    monkeypatch.setenv("SECRET_KEY", "")
 
     try:
         with pytest.raises(RuntimeError, match="SECRET_KEY"):
             importlib.reload(config_module)
     finally:
-        # Always restore so subsequent tests are unaffected
-        if original is not None:
-            os.environ["SECRET_KEY"] = original
-        # Re-import with valid key to reset module state
+        monkeypatch.undo()
         importlib.reload(config_module)
 
 
