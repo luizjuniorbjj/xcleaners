@@ -10,6 +10,9 @@ Gates (all must be TRUE to attempt charge):
   3. Client has stripe_customer_id NOT NULL
   4. Booking has final_price > 0
   5. Booking has NO existing payment_intent_id (idempotence — don't re-charge)
+  6. Booking has NO terminal payment_status (Smith M2: prevents double-charge
+     after Stripe's 24h idempotency window expires; pi_id may have been NULL
+     on a prior declined attempt)
 
 On charge attempt:
   - Updates cleaning_bookings with stripe_payment_intent_id + payment_status
@@ -56,6 +59,7 @@ async def try_auto_charge_booking(db: Database, booking_id: str) -> dict:
                    b.client_id,
                    b.final_price,
                    b.stripe_payment_intent_id AS existing_pi,
+                   b.payment_status AS existing_status,
                    c.stripe_customer_id,
                    biz.stripe_account_id,
                    biz.stripe_charges_enabled
@@ -76,6 +80,20 @@ async def try_auto_charge_booking(db: Database, booking_id: str) -> dict:
     # Gate: already charged (idempotence)
     if row["existing_pi"]:
         return {"attempted": False, "reason": "already_charged"}
+
+    # Gate: terminal prior status (Smith M2) — a previous attempt ended in a
+    # state that should NOT be silently retried. Examples:
+    #   - 'succeeded' (defense-in-depth; covered by existing_pi but explicit here)
+    #   - 'declined'  (card issuer refused — needs owner intervention)
+    #   - 'failed'    (stripe config or network error; treat as terminal until fixed)
+    # 'pending' and 'processing' (in-flight) and 'requires_action' (needs SCA —
+    # owner should retry after client authenticates) DO pass this gate.
+    existing_status = row.get("existing_status")
+    if existing_status in ("succeeded", "declined", "failed"):
+        return {
+            "attempted": False,
+            "reason": f"terminal_status_{existing_status}",
+        }
 
     # Gate: business not connected / charges not enabled
     if not row["stripe_account_id"] or not row["stripe_charges_enabled"]:
@@ -105,12 +123,11 @@ async def try_auto_charge_booking(db: Database, booking_id: str) -> dict:
         booking_id=str(booking_id),
     )
 
-    # Persist outcome to booking row
+    # Persist outcome to booking row.
+    # Migration 026 added 'processing' to the CHECK constraint, so Stripe's
+    # real async state can now be stored without remapping (Smith M1 fix).
     payment_intent_id = result.get("payment_intent_id")
     payment_status = result.get("status") or ("succeeded" if result.get("success") else "failed")
-    # Normalize 'processing' to 'pending' to fit our CHECK constraint
-    if payment_status == "processing":
-        payment_status = "pending"
 
     try:
         await db.pool.execute(

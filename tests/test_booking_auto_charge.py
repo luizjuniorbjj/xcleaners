@@ -270,6 +270,100 @@ async def test_auto_charge_skips_already_charged_booking(db, biz_ready):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_status", ["declined", "failed", "succeeded"])
+async def test_auto_charge_skips_terminal_status_prior(db, biz_ready, terminal_status):
+    """Smith M2: booking with terminal payment_status is NOT retried even if pi_id is NULL."""
+    svc_id = await _make_service(db, biz_ready)
+    client_id = await _make_client(db, biz_ready, stripe_customer_id="cus_terminal")
+    booking_id = await _make_booking(db, biz_ready, client_id, svc_id)
+    # Terminal status set by prior attempt — pi_id intentionally NULL
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status = $1 WHERE id = $2",
+        terminal_status, booking_id,
+    )
+
+    try:
+        result = await try_auto_charge_booking(db, booking_id)
+        assert result == {
+            "attempted": False,
+            "reason": f"terminal_status_{terminal_status}",
+        }
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+        await db.pool.execute("DELETE FROM cleaning_clients WHERE id = $1", client_id)
+        await db.pool.execute("DELETE FROM cleaning_services WHERE id = $1", svc_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("non_terminal_status", ["pending", "processing", "requires_action"])
+async def test_auto_charge_retries_non_terminal_status(db, biz_ready, non_terminal_status):
+    """Smith M2: in-flight / requires_action states MUST still allow retry attempt."""
+    svc_id = await _make_service(db, biz_ready)
+    client_id = await _make_client(db, biz_ready, stripe_customer_id="cus_retry")
+    booking_id = await _make_booking(db, biz_ready, client_id, svc_id)
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status = $1 WHERE id = $2",
+        non_terminal_status, booking_id,
+    )
+
+    fake_result = {
+        "success": True,
+        "payment_intent_id": "pi_retry_ok",
+        "status": "succeeded",
+    }
+
+    try:
+        with patch(
+            "app.modules.cleaning.services.booking_charge_service.charge_booking_off_session",
+            AsyncMock(return_value=fake_result),
+        ):
+            result = await try_auto_charge_booking(db, booking_id)
+
+        # Gate must NOT block — charge attempted
+        assert result["attempted"] is True
+        assert result["success"] is True
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+        await db.pool.execute("DELETE FROM cleaning_clients WHERE id = $1", client_id)
+        await db.pool.execute("DELETE FROM cleaning_services WHERE id = $1", svc_id)
+
+
+@pytest.mark.asyncio
+async def test_auto_charge_persists_processing_status_without_remap(db, biz_ready):
+    """Smith M1: Stripe's 'processing' is persisted as-is (not remapped to 'pending')."""
+    svc_id = await _make_service(db, biz_ready)
+    client_id = await _make_client(db, biz_ready, stripe_customer_id="cus_proc")
+    booking_id = await _make_booking(db, biz_ready, client_id, svc_id)
+
+    fake_result = {
+        "success": True,
+        "payment_intent_id": "pi_processing_async",
+        "status": "processing",
+    }
+
+    try:
+        with patch(
+            "app.modules.cleaning.services.booking_charge_service.charge_booking_off_session",
+            AsyncMock(return_value=fake_result),
+        ):
+            result = await try_auto_charge_booking(db, booking_id)
+
+        assert result["attempted"] is True
+        assert result["success"] is True
+        assert result["payment_status"] == "processing"  # NOT remapped to 'pending'
+
+        row = await db.pool.fetchrow(
+            "SELECT payment_status FROM cleaning_bookings WHERE id = $1",
+            booking_id,
+        )
+        assert row["payment_status"] == "processing"
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+        await db.pool.execute("DELETE FROM cleaning_clients WHERE id = $1", client_id)
+        await db.pool.execute("DELETE FROM cleaning_services WHERE id = $1", svc_id)
+
+
+@pytest.mark.asyncio
 async def test_auto_charge_happy_updates_booking_status(db, biz_ready):
     """All gates pass → charges via mocked Stripe → booking updated with PI id + status."""
     svc_id = await _make_service(db, biz_ready)
