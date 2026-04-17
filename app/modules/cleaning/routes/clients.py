@@ -52,6 +52,16 @@ from app.modules.cleaning.services.schedule_service import (
     pause_schedule,
     resume_schedule,
 )
+from app.modules.cleaning.services.stripe_connect_service import (
+    create_setup_intent_for_client,
+    list_saved_payment_methods,
+    detach_payment_method,
+)
+
+import os as _os
+
+STRIPE_SECRET_KEY_PRESENT = bool(_os.getenv("STRIPE_SECRET_KEY", ""))
+STRIPE_PUBLISHABLE_KEY = _os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 
 logger = logging.getLogger("xcleaners.client_routes")
 
@@ -392,3 +402,156 @@ async def api_invite_client(
         "invite_url": f"/cleaning/app#/register/invite/{invite_token}",
         "message": f"Invitation ready for {client['first_name']} {client['last_name'] or ''}",
     }
+
+
+# ============================================================================
+# PAYMENT METHODS (Stripe Connect setup-intent flow) [3S-1]
+# ============================================================================
+# Owner-assisted card collection: Ana collects card on behalf of a client via
+# Stripe Elements (phone or in-person). Card is saved on the BUSINESS's
+# connected Stripe account (not platform) — so charges go directly to owner.
+#
+# Endpoints:
+#   POST   /clients/{id}/setup-intent          → client_secret for Stripe Elements
+#   GET    /clients/{id}/payment-methods       → list saved cards
+#   DELETE /clients/{id}/payment-methods/{pm}  → remove a saved card
+
+
+async def _require_connected_stripe(db: Database, business_id) -> str:
+    """Fetch stripe_account_id for business or raise HTTPException."""
+    row = await db.pool.fetchrow(
+        "SELECT stripe_account_id, stripe_charges_enabled FROM businesses WHERE id = $1",
+        business_id,
+    )
+    if not row or not row["stripe_account_id"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Business has not connected Stripe yet. Complete onboarding first.",
+        )
+    if not STRIPE_SECRET_KEY_PRESENT:
+        raise HTTPException(
+            status_code=503,
+            detail="Payments are not configured on this server.",
+        )
+    return row["stripe_account_id"]
+
+
+async def _fetch_client_or_404(db: Database, business_id, client_id: str) -> dict:
+    row = await db.pool.fetchrow(
+        """
+        SELECT id, business_id, first_name, last_name, email,
+               stripe_customer_id
+          FROM cleaning_clients
+         WHERE id = $1 AND business_id = $2
+        """,
+        client_id, business_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return dict(row)
+
+
+@router.post("/{client_id}/setup-intent", status_code=201)
+async def api_create_client_setup_intent(
+    slug: str,
+    client_id: str,
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """
+    Create a Stripe SetupIntent to collect a card on file for the client.
+
+    Returns client_secret for Stripe Elements. On first call, creates a Stripe
+    Customer and persists its ID in cleaning_clients.stripe_customer_id.
+    Subsequent calls reuse the existing customer (saves another PM to same customer).
+    """
+    stripe_account_id = await _require_connected_stripe(db, user["business_id"])
+    client = await _fetch_client_or_404(db, user["business_id"], client_id)
+
+    client_name = " ".join(
+        p for p in (client.get("first_name"), client.get("last_name")) if p
+    ).strip() or "Client"
+    client_email = client.get("email") or ""
+
+    try:
+        result = await create_setup_intent_for_client(
+            connected_account_id=stripe_account_id,
+            client_email=client_email,
+            client_name=client_name,
+            client_metadata={
+                "xcleaners_client_id": str(client["id"]),
+                "xcleaners_business_id": str(client["business_id"]),
+            },
+            existing_customer_id=client.get("stripe_customer_id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.exception("setup_intent: Stripe error for client %s", client_id)
+        raise HTTPException(status_code=502, detail="Upstream payment provider error")
+
+    # Persist customer_id on first successful call
+    if not client.get("stripe_customer_id"):
+        await db.pool.execute(
+            "UPDATE cleaning_clients SET stripe_customer_id = $1 WHERE id = $2",
+            result["customer_id"], client_id,
+        )
+
+    return {
+        "client_secret": result["client_secret"],
+        "customer_id": result["customer_id"],
+        "setup_intent_id": result["setup_intent_id"],
+        "publishable_key": STRIPE_PUBLISHABLE_KEY,
+        "stripe_account_id": stripe_account_id,
+    }
+
+
+@router.get("/{client_id}/payment-methods")
+async def api_list_client_payment_methods(
+    slug: str,
+    client_id: str,
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """List saved payment methods (cards) for a client."""
+    stripe_account_id = await _require_connected_stripe(db, user["business_id"])
+    client = await _fetch_client_or_404(db, user["business_id"], client_id)
+
+    if not client.get("stripe_customer_id"):
+        return {"payment_methods": []}
+
+    try:
+        methods = await list_saved_payment_methods(
+            stripe_account_id, client["stripe_customer_id"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.exception("list_pms: Stripe error for client %s", client_id)
+        raise HTTPException(status_code=502, detail="Upstream payment provider error")
+
+    return {"payment_methods": methods}
+
+
+@router.delete("/{client_id}/payment-methods/{pm_id}", status_code=204)
+async def api_detach_client_payment_method(
+    slug: str,
+    client_id: str,
+    pm_id: str,
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """Detach a payment method from the client (removes card from file)."""
+    stripe_account_id = await _require_connected_stripe(db, user["business_id"])
+    # Ensures client belongs to this business (404 if cross-tenant)
+    await _fetch_client_or_404(db, user["business_id"], client_id)
+
+    try:
+        await detach_payment_method(stripe_account_id, pm_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.exception("detach_pm: Stripe error for client %s / pm %s", client_id, pm_id)
+        raise HTTPException(status_code=502, detail="Upstream payment provider error")
+
+    return None

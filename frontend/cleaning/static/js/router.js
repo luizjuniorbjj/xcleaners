@@ -13,6 +13,7 @@ window.CleanRouter = {
     '/teams':            { module: 'owner/team-manager.js', roles: ['owner'], title: 'Teams' },
     '/clients':          { module: 'owner/client-manager.js', roles: ['owner'], title: 'Clients' },
     '/clients/:id':      { module: 'owner/client-detail.js', roles: ['owner'], title: 'Client Detail' },
+    '/clients/:id/payment-methods': { module: 'owner/client-payment-methods.js', roles: ['owner'], title: 'Payment Methods' },
     '/crm':              { module: 'owner/crm.js', roles: ['owner'], plan: 'maximum', title: 'CRM' },
     '/invoices':         { module: 'owner/invoice-manager.js', roles: ['owner'], title: 'Invoices' },
     '/chat':             { module: 'owner/chat-monitor.js', roles: ['owner'], plan: 'intermediate', title: 'AI Chat' },

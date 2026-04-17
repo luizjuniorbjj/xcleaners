@@ -77,6 +77,7 @@ window.OwnerClientDetail = {
           <div class="cc-detail-actions">
             <button class="cc-btn cc-btn-sm" onclick="OwnerClientDetail._toggleEdit()">Edit</button>
             <button class="cc-btn cc-btn-sm cc-btn-outline" onclick="OwnerClientDetail._inviteClient()">Invite to App</button>
+            <a class="cc-btn cc-btn-sm cc-btn-outline" href="#/owner/clients/${this._esc(c.id || this._clientId)}/payment-methods">Payment Methods</a>
           </div>
         </div>
 

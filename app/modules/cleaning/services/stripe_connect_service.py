@@ -212,11 +212,15 @@ async def create_setup_intent_for_client(
     client_email: str,
     client_name: str,
     client_metadata: Optional[dict] = None,
+    existing_customer_id: Optional[str] = None,
 ) -> dict:
     """
     Create SetupIntent on the connected account so the client's
     PaymentMethod is saved to THE BUSINESS's Stripe Customer
     (not the platform).
+
+    If `existing_customer_id` is provided, reuses that customer
+    (no new Customer.create call). Otherwise creates a new one.
 
     Returns: {
         'customer_id': 'cus_xxx',  # stripe customer on connected account
@@ -227,23 +231,26 @@ async def create_setup_intent_for_client(
     if not STRIPE_SECRET_KEY:
         raise ValueError("Stripe not configured")
 
-    # Create or reuse Customer on connected account
-    customer = stripe.Customer.create(
-        email=client_email,
-        name=client_name,
-        metadata=client_metadata or {},
-        stripe_account=connected_account_id,
-    )
+    if existing_customer_id:
+        customer_id = existing_customer_id
+    else:
+        customer = stripe.Customer.create(
+            email=client_email,
+            name=client_name,
+            metadata=client_metadata or {},
+            stripe_account=connected_account_id,
+        )
+        customer_id = customer.id
 
     setup_intent = stripe.SetupIntent.create(
-        customer=customer.id,
+        customer=customer_id,
         payment_method_types=["card"],
         usage="off_session",  # for future charges without customer present
         stripe_account=connected_account_id,
     )
 
     return {
-        "customer_id": customer.id,
+        "customer_id": customer_id,
         "setup_intent_id": setup_intent.id,
         "client_secret": setup_intent.client_secret,
     }
