@@ -162,46 +162,16 @@ async def post_void(
 
 
 # ============================================================================
-# CLEANER ENDPOINT
+# CLEANER ENDPOINT — REMOVED in Sprint Fix 2026-04-17 (Fase 2b.2)
 # ============================================================================
-
-@router.get("/my-earnings")
-async def get_my_earnings(
-    slug: str,
-    status: Optional[str] = Query(None, pattern=r"^(pending|paid|void)$"),
-    from_date: Optional[date] = Query(None),
-    to_date: Optional[date] = Query(None),
-    limit: int = Query(200, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    user: dict = Depends(require_role("team_lead", "cleaner")),
-    db: Database = Depends(get_db),
-):
-    """Cleaner-facing: only their own earnings."""
-    # Resolve team_member_id from user_id
-    member = await db.pool.fetchrow(
-        """
-        SELECT id FROM cleaning_team_members
-        WHERE business_id = $1 AND user_id = $2
-        """,
-        user["business_id"], user["user_id"],
-    )
-    if member is None:
-        raise HTTPException(
-            status_code=403,
-            detail="You are not registered as a team member in this business.",
-        )
-
-    rows = await list_earnings(
-        db, user["business_id"],
-        cleaner_id=member["id"],
-        status=status,
-        from_date=from_date,
-        to_date=to_date,
-        limit=limit,
-        offset=offset,
-    )
-    for r in rows:
-        for k in ("gross_amount", "net_amount", "commission_pct", "booking_final_price"):
-            if r.get(k) is not None:
-                r[k] = str(r[k])
-    return {"items": rows, "count": len(rows)}
+# The GET /my-earnings endpoint previously declared here collided with
+# cleaner_routes.py:314 which registers the SAME path on the SAME prefix.
+# Since xcleaners_main.py registers cleaning_cleaner_router BEFORE
+# cleaning_payroll_router, the cleaner_routes version won and this one
+# was silently dead code. Removing it eliminates the ambiguity and the
+# maintenance trap. When Sprint D Track C (UI refactor) ships, the
+# cleaner-facing earnings view will be migrated to this module's shape
+# ({items, count} with commission snapshots) and the cleaner_routes
+# version will be removed. Until then, cleaner_routes.py:/my-earnings
+# remains the single source of truth for this endpoint.
+# ============================================================================

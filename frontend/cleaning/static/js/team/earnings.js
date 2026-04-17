@@ -98,6 +98,20 @@ window.TeamEarnings = {
 
     try {
       const rawData = await CleanAPI.cleanGet(`/my-earnings?period=${this._currentPeriod}`);
+
+      // Backend returned 403 — render a clear restriction banner in place of
+      // the "no activity yet" empty state, which otherwise masks the error.
+      if (rawData && rawData._forbidden) {
+        const escape = (s) => { const d=document.createElement('div'); d.textContent = s||''; return d.innerHTML; };
+        contentEl.innerHTML = `
+          <div class="cc-card cc-animate-fade-in" style="padding:var(--cc-space-4);background:var(--cc-warning-50);border:1px solid var(--cc-warning-200);border-radius:var(--cc-radius-md);">
+            <div class="cc-text-sm" style="color:var(--cc-warning-700);font-weight:var(--cc-font-semibold);margin-bottom:var(--cc-space-1);">Access restricted</div>
+            <div class="cc-text-sm" style="color:var(--cc-warning-700);">${escape(rawData.detail || 'Contact your manager to be assigned to a team.')}</div>
+          </div>
+        `;
+        return;
+      }
+
       const data = (rawData && typeof rawData === 'object' && Object.keys(rawData).length > 0) ? rawData : { summary: {}, daily: [] };
 
       const summary = data.summary || {};

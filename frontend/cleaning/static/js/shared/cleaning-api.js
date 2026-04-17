@@ -183,10 +183,23 @@ window.CleanAPI = {
         }
       }
 
-      // 403 - access denied
+      // 403 - access denied. Read detail from body so caller can distinguish
+      // a forbidden response from an empty-but-successful one (e.g.,
+      // "You are not assigned to a team." vs. "No jobs today"). The marker
+      // object is truthy and Object.keys(...).length > 0, so views that
+      // check `rawData && data.jobs` continue to behave as before; views
+      // that want to show a banner can test `rawData?._forbidden`.
       if (resp.status === 403) {
-        Xcleaners.showToast('Access denied. You do not have permission for this action.', 'error');
-        return null;
+        const err = await resp.json().catch(() => ({}));
+        const detail = typeof err.detail === 'string'
+          ? err.detail
+          : (Array.isArray(err.detail)
+              ? err.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+              : 'Access denied. You do not have permission for this action.');
+        if (Xcleaners && typeof Xcleaners.showToast === 'function') {
+          Xcleaners.showToast(detail, 'error');
+        }
+        return { _forbidden: true, status: 403, detail };
       }
 
       if (!resp.ok) {

@@ -73,6 +73,21 @@ window.TeamToday = {
 
     try {
       const rawData = await CleanAPI.cleanGet('/my-jobs/today');
+
+      // Backend returned 403 — surface the server-provided detail instead of
+      // falling through to an empty state that would read as "day off".
+      if (rawData && rawData._forbidden) {
+        this._jobs = [];
+        summaryEl.innerHTML = '';
+        listEl.innerHTML = `
+          <div class="cc-card cc-animate-fade-in" style="padding:var(--cc-space-4);background:var(--cc-warning-50);border:1px solid var(--cc-warning-200);border-radius:var(--cc-radius-md);">
+            <div class="cc-text-sm" style="color:var(--cc-warning-700);font-weight:var(--cc-font-semibold);margin-bottom:var(--cc-space-1);">Access restricted</div>
+            <div class="cc-text-sm" style="color:var(--cc-warning-700);">${this._escapeHtml(rawData.detail || 'Contact your manager to be assigned to a team.')}</div>
+          </div>
+        `;
+        return;
+      }
+
       const data = (rawData && typeof rawData === 'object' && Object.keys(rawData).length > 0) ? rawData : { jobs: [], summary: { total: 0, completed: 0, active: 0 } };
 
       this._jobs = Array.isArray(data.jobs) ? data.jobs : [];

@@ -84,6 +84,13 @@ window.CleanRouter = {
     const path=window.location.pathname;
     if (path===this._currentPath&&!this._isFirstLoad) return;
     this._isFirstLoad=false; this._currentPath=path;
+    // Direct /logout URL — tear down session and route to login
+    if (path==='/logout') {
+      if (typeof Xcleaners!=='undefined' && typeof Xcleaners.logout==='function') { Xcleaners.logout(); return; }
+      // Fallback if Xcleaners not available: clear tokens inline and redirect
+      if (typeof CleanAPI!=='undefined' && CleanAPI.clearTokens) CleanAPI.clearTokens();
+      history.replaceState({},'','/login'); this._currentPath=null; this._onRouteChange(); return;
+    }
     if (path==='/'||path==='') { this.navigate(this._userRole?this.getDefaultRoute():'/login'); return; }
     if (path==='/login'||path==='/register'||path.startsWith('/register/invite')) {
       if (this._userRole) { this.navigate(this.getDefaultRoute()); return; }
