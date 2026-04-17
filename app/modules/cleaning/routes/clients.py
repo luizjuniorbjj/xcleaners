@@ -18,10 +18,14 @@ Endpoints:
 All protected by require_role("owner").
 """
 
+import csv
+import io
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import Response
+from pydantic import ValidationError
 
 from app.database import get_db, Database
 from app.modules.cleaning.middleware.role_guard import require_role
@@ -531,6 +535,216 @@ async def api_list_client_payment_methods(
         raise HTTPException(status_code=502, detail="Upstream payment provider error")
 
     return {"payment_methods": methods}
+
+
+# ============================================================================
+# CSV IMPORT (bulk client onboarding) [3S-3]
+# ============================================================================
+# Ana uploads CSV (e.g., Launch27 export or Google Sheets) → system imports in
+# batch. Reuses client_service.create_client per row to keep validation + dup
+# detection consistent with single-POST flow.
+
+_IMPORT_REQUIRED_HEADERS = [
+    "first_name", "last_name", "email", "phone",
+    "address_line1", "city", "state", "zip_code", "country",
+]
+_IMPORT_OPTIONAL_HEADERS = [
+    "notes", "preferred_day", "property_type", "bedrooms", "bathrooms",
+    "phone_secondary", "preferred_contact", "billing_address", "internal_notes",
+]
+_IMPORT_ALL_HEADERS = _IMPORT_REQUIRED_HEADERS + _IMPORT_OPTIONAL_HEADERS
+_IMPORT_MAX_ROWS = 500
+
+
+def _normalize_headers(headers) -> list[str]:
+    """Lowercase + strip each column header for case-insensitive matching."""
+    return [(h or "").strip().lower() for h in headers]
+
+
+def _coerce_row_types(row: dict) -> dict:
+    """Cast numeric fields where present; empty strings → None."""
+    cleaned = {}
+    for k, v in row.items():
+        if v is None:
+            cleaned[k] = None
+            continue
+        v = v.strip() if isinstance(v, str) else v
+        if v == "":
+            cleaned[k] = None
+            continue
+        if k in ("bedrooms",):
+            try:
+                cleaned[k] = int(v)
+            except (ValueError, TypeError):
+                cleaned[k] = v  # let Pydantic reject
+        elif k in ("bathrooms",):
+            try:
+                cleaned[k] = float(v)
+            except (ValueError, TypeError):
+                cleaned[k] = v
+        else:
+            cleaned[k] = v
+    return cleaned
+
+
+@router.post("/import")
+async def api_import_clients_csv(
+    slug: str,
+    file: UploadFile = File(..., description="CSV file with client data"),
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """
+    Bulk import clients from a CSV file.
+
+    Required columns: first_name, last_name, email, phone, address_line1,
+                      city, state, zip_code, country
+    Optional columns: notes, preferred_day, property_type, bedrooms, bathrooms,
+                      phone_secondary, preferred_contact, billing_address, internal_notes
+
+    Returns: {imported, skipped: [...], errors: [...], total_rows}
+      - skipped: duplicate emails or phones (not a hard fail)
+      - errors:  validation failures or DB errors per row
+    """
+    filename = (file.filename or "").lower()
+    if filename and not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    # Read + decode
+    try:
+        raw = await file.read()
+        text = raw.decode("utf-8-sig")  # BOM-tolerant
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
+
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header_row = next(reader)
+    except StopIteration:
+        raise HTTPException(status_code=400, detail="CSV is empty (no header row)")
+
+    normalized_headers = _normalize_headers(header_row)
+    missing = [h for h in _IMPORT_REQUIRED_HEADERS if h not in normalized_headers]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {', '.join(missing)}",
+        )
+
+    # Map index → known column name (ignore unknown columns silently)
+    col_map: dict[int, str] = {
+        idx: h for idx, h in enumerate(normalized_headers) if h in _IMPORT_ALL_HEADERS
+    }
+
+    imported = 0
+    skipped: list[dict] = []
+    errors: list[dict] = []
+    total_rows = 0
+
+    for row_num, raw_row in enumerate(reader, start=2):  # row 1 is header
+        total_rows += 1
+        if total_rows > _IMPORT_MAX_ROWS:
+            errors.append({
+                "row": row_num,
+                "reason": f"Exceeded max {_IMPORT_MAX_ROWS} rows per upload; stopping here.",
+            })
+            break
+
+        row_dict: dict[str, Optional[str]] = {}
+        for idx, col_name in col_map.items():
+            row_dict[col_name] = raw_row[idx] if idx < len(raw_row) else None
+
+        row_dict = _coerce_row_types(row_dict)
+
+        # Skip fully-empty rows (trailing blanks in spreadsheets)
+        if not any(v for v in row_dict.values()):
+            total_rows -= 1  # don't count blank trailing rows
+            continue
+
+        # Default source for imported clients
+        row_dict.setdefault("source", "import")
+
+        # Validate with Pydantic (same rules as POST /clients)
+        try:
+            model = CleaningClientCreate(**row_dict)
+        except ValidationError as ve:
+            msgs = "; ".join(
+                f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+                for err in ve.errors()
+            )
+            errors.append({"row": row_num, "reason": f"Validation failed — {msgs}"})
+            continue
+
+        data = model.model_dump(exclude_none=True)
+
+        try:
+            result = await create_client(db, user["business_id"], data)
+        except Exception as exc:
+            logger.exception("import_clients: unexpected error on row %d", row_num)
+            errors.append({"row": row_num, "reason": f"Internal error: {exc}"})
+            continue
+
+        if result.get("duplicate"):
+            skipped.append({
+                "row": row_num,
+                "email": row_dict.get("email"),
+                "phone": row_dict.get("phone"),
+                "reason": f"duplicate_{result.get('match_field', 'match')}",
+                "existing_client_id": result.get("existing_client_id"),
+            })
+            continue
+        if result.get("error"):
+            errors.append({
+                "row": row_num,
+                "reason": result.get("message", "unknown error"),
+            })
+            continue
+
+        imported += 1
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors,
+        "total_rows": total_rows,
+    }
+
+
+@router.get("/import/template")
+async def api_download_import_template(
+    slug: str,
+    user: dict = Depends(require_role("owner")),
+):
+    """Return a CSV template with all supported columns + 1 example row."""
+    example_row = {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "email": "jane@example.com",
+        "phone": "+1-555-0100",
+        "address_line1": "123 Main St",
+        "city": "New Orleans",
+        "state": "LA",
+        "zip_code": "70112",
+        "country": "US",
+        "notes": "Prefers morning cleanings",
+        "preferred_day": "tuesday",
+        "property_type": "house",
+        "bedrooms": "3",
+        "bathrooms": "2",
+        "phone_secondary": "",
+        "preferred_contact": "email",
+        "billing_address": "",
+        "internal_notes": "",
+    }
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_IMPORT_ALL_HEADERS)
+    writer.writeheader()
+    writer.writerow({k: example_row.get(k, "") for k in _IMPORT_ALL_HEADERS})
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="clients-template.csv"'},
+    )
 
 
 @router.delete("/{client_id}/payment-methods/{pm_id}", status_code=204)

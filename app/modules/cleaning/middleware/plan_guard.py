@@ -82,10 +82,14 @@ async def get_business_plan(business_id: str, db: Database) -> str:
 
     # 3. Fall back to businesses.plan column
     if not plan:
-        plan = await db.pool.fetchval(
-            "SELECT plan FROM businesses WHERE id = $1",
-            business_id,
-        )
+        try:
+            plan = await db.pool.fetchval(
+                "SELECT plan FROM businesses WHERE id = $1",
+                business_id,
+            )
+        except asyncpg.exceptions.UndefinedColumnError:
+            # Dev DB or legacy schema may not have `plan` column — treat as unset
+            plan = None
 
     plan = plan or "basic"
 

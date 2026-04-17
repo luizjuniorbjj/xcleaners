@@ -95,7 +95,10 @@ window.OwnerClientManager = {
             <h2 style="margin:0;">Clients</h2>
             <span class="cc-badge cc-badge-neutral">${this._total}</span>
           </div>
-          <button class="cc-btn cc-btn-primary cc-btn-sm" onclick="OwnerClientManager._showAddModal()">+ Add Client</button>
+          <div style="display:flex;gap:var(--cc-space-2);">
+            <button class="cc-btn cc-btn-secondary cc-btn-sm" onclick="OwnerClientManager._showImportModal()">Import CSV</button>
+            <button class="cc-btn cc-btn-primary cc-btn-sm" onclick="OwnerClientManager._showAddModal()">+ Add Client</button>
+          </div>
         </div>
 
         <!-- Filters Bar -->
@@ -583,5 +586,147 @@ window.OwnerClientManager = {
   _escHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  // ============================================================
+  // CSV Import (bulk onboarding) [3S-3]
+  // ============================================================
+
+  _showImportModal() {
+    const modalHtml = `
+      <div id="ccImportModal" class="cc-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
+        <div class="cc-card" style="max-width:560px;width:90%;padding:var(--cc-space-5);max-height:90vh;overflow-y:auto;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--cc-space-4);">
+            <h3 style="margin:0;">Import Clients from CSV</h3>
+            <button class="cc-btn cc-btn-ghost cc-btn-sm" onclick="OwnerClientManager._closeImportModal()">&times;</button>
+          </div>
+
+          <p class="cc-text-sm cc-text-muted">
+            Upload a CSV file to import multiple clients at once. Duplicates (by email or phone) are skipped automatically.
+          </p>
+
+          <div style="margin:var(--cc-space-4) 0;">
+            <button class="cc-btn cc-btn-secondary cc-btn-sm" onclick="OwnerClientManager._downloadImportTemplate()">
+              Download Template
+            </button>
+          </div>
+
+          <div style="margin:var(--cc-space-4) 0;">
+            <label class="cc-text-sm" style="display:block;margin-bottom:var(--cc-space-2);">Select CSV file</label>
+            <input type="file" id="ccImportFile" accept=".csv" class="cc-input" />
+          </div>
+
+          <div id="ccImportResult" style="display:none;margin-top:var(--cc-space-4);"></div>
+
+          <div style="display:flex;gap:var(--cc-space-3);justify-content:flex-end;margin-top:var(--cc-space-4);">
+            <button class="cc-btn cc-btn-ghost" onclick="OwnerClientManager._closeImportModal()">Cancel</button>
+            <button id="ccImportUploadBtn" class="cc-btn cc-btn-primary" onclick="OwnerClientManager._doImport()">Upload</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  },
+
+  _closeImportModal() {
+    const modal = document.getElementById('ccImportModal');
+    if (modal) modal.remove();
+  },
+
+  async _downloadImportTemplate() {
+    try {
+      const slug = CleanAPI._slug;
+      const resp = await fetch(
+        `/api/v1/clean/${slug}/clients/import/template`,
+        { headers: CleanAPI._buildHeaders ? CleanAPI._buildHeaders() : {} }
+      );
+      if (!resp.ok) throw new Error('Failed to fetch template');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'clients-template.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to download template: ' + (e.message || 'Unknown error'));
+    }
+  },
+
+  async _doImport() {
+    const fileInput = document.getElementById('ccImportFile');
+    const btn = document.getElementById('ccImportUploadBtn');
+    const resultDiv = document.getElementById('ccImportResult');
+
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      alert('Please select a CSV file first.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+    resultDiv.style.display = 'none';
+    resultDiv.innerHTML = '';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      const slug = CleanAPI._slug;
+      const headers = CleanAPI._buildHeaders ? CleanAPI._buildHeaders() : {};
+      // Don't set Content-Type — browser adds multipart boundary automatically
+      delete headers['Content-Type'];
+      delete headers['content-type'];
+
+      const resp = await fetch(
+        `/api/v1/clean/${slug}/clients/import`,
+        { method: 'POST', headers, body: formData }
+      );
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `<div class="cc-alert cc-alert-error">${this._escHtml(data.detail || 'Upload failed')}</div>`;
+        return;
+      }
+
+      const errorsList = (data.errors || []).slice(0, 10).map(e =>
+        `<li>Row ${e.row}: ${this._escHtml(e.reason)}</li>`
+      ).join('');
+      const skippedList = (data.skipped || []).slice(0, 10).map(s =>
+        `<li>Row ${s.row}: ${this._escHtml(s.reason)} — ${this._escHtml(s.email || s.phone || '')}</li>`
+      ).join('');
+
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `
+        <div class="cc-alert cc-alert-success">
+          Imported <strong>${data.imported}</strong> / ${data.total_rows} clients.
+        </div>
+        ${(data.skipped || []).length ? `
+          <div class="cc-alert cc-alert-warning" style="margin-top:var(--cc-space-2);">
+            <strong>Skipped (${(data.skipped || []).length}):</strong>
+            <ul style="margin:var(--cc-space-2) 0 0 var(--cc-space-4);font-size:0.85em;">${skippedList}</ul>
+          </div>` : ''}
+        ${(data.errors || []).length ? `
+          <div class="cc-alert cc-alert-error" style="margin-top:var(--cc-space-2);">
+            <strong>Errors (${(data.errors || []).length}):</strong>
+            <ul style="margin:var(--cc-space-2) 0 0 var(--cc-space-4);font-size:0.85em;">${errorsList}</ul>
+          </div>` : ''}
+      `;
+
+      if (data.imported > 0) {
+        // Refresh list in background
+        setTimeout(() => this._loadAndRender(), 500);
+      }
+    } catch (e) {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `<div class="cc-alert cc-alert-error">${this._escHtml(e.message || 'Upload failed')}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Upload';
+    }
   },
 };
