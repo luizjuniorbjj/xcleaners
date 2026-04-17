@@ -353,6 +353,57 @@ async def stripe_webhook(request: Request, db: Database = Depends(get_db)):
             )
         return {"received": True, "processed": True, "type": event_type}
 
+    # Smith M3: payment_intent lifecycle events — sync cleaning_bookings with
+    # Stripe's async payment state. Booking-level PI metadata is set by
+    # booking_charge_service.charge_booking_off_session (xcleaners_booking_id).
+    _PI_EVENT_TO_STATUS = {
+        "payment_intent.succeeded":       "succeeded",
+        "payment_intent.payment_failed":  "failed",
+        "payment_intent.processing":      "processing",
+        "payment_intent.requires_action": "requires_action",
+    }
+    if event_type in _PI_EVENT_TO_STATUS:
+        pi = event["data"]["object"] or {}
+        pi_id = pi.get("id")
+        metadata = pi.get("metadata") or {}
+        booking_id = metadata.get("xcleaners_booking_id")
+        target_status = _PI_EVENT_TO_STATUS[event_type]
+
+        if not booking_id or not pi_id:
+            logger.debug(
+                "stripe_webhook: %s without xcleaners_booking_id metadata — no-op (pi=%s)",
+                event_type, pi_id,
+            )
+            return {
+                "received": True,
+                "processed": False,
+                "type": event_type,
+                "reason": "no_booking_metadata",
+            }
+
+        # Idempotent update. COALESCE keeps the first pi_id seen — prevents a
+        # late webhook with a different PI (e.g. a retry) from overwriting.
+        result = await db.pool.execute(
+            """
+            UPDATE cleaning_bookings
+               SET payment_status = $1,
+                   stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, $2)
+             WHERE id = $3
+            """,
+            target_status, pi_id, booking_id,
+        )
+        if result == "UPDATE 0":
+            logger.warning(
+                "stripe_webhook: %s for unknown booking_id=%s pi=%s — ignored",
+                event_type, booking_id, pi_id,
+            )
+        else:
+            logger.info(
+                "stripe_webhook: %s booking=%s pi=%s status=%s",
+                event_type, booking_id, pi_id, target_status,
+            )
+        return {"received": True, "processed": True, "type": event_type}
+
     # Unknown/unhandled event types still return 200 so Stripe doesn't retry
     logger.debug("stripe_webhook: unhandled event type %s", event_type)
     return {"received": True, "processed": False, "type": event_type}
