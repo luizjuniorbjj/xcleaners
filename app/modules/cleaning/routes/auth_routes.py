@@ -379,6 +379,23 @@ async def get_my_roles(
     )
 
     roles = []
+
+    # Virtual super_admin role — if user has platform role 'admin', expose it
+    # as a selectable role so the PWA can route them to /admin. Listed FIRST
+    # so it becomes the default active role on initial login.
+    if current_user.get("role") == "admin":
+        roles.append({
+            "id": "platform-admin",
+            "role": "super_admin",
+            "team_id": None,
+            "team_name": None,
+            "business_id": None,
+            "business_slug": "_platform",
+            "business_name": "Platform Admin",
+            "business_logo": None,
+            "created_at": None,
+        })
+
     for row in rows:
         roles.append({
             "id": str(row["id"]),
