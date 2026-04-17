@@ -895,8 +895,125 @@ async def _sse_generator(channel: str, request: Request):
 
 
 # ============================================
-# BOOKINGS CRUD (PATCH for drag-and-drop)
+# BOOKINGS CRUD (GET list, PATCH for drag-and-drop)
 # ============================================
+
+@router.get("/bookings")
+async def list_bookings(
+    slug: str,
+    status: Optional[str] = Query(None, description="Filter by status (scheduled, completed, etc)"),
+    date_from: Optional[str] = Query(None, description="ISO date: lower bound (inclusive)"),
+    date_to: Optional[str] = Query(None, description="ISO date: upper bound (inclusive)"),
+    limit: int = Query(500, ge=1, le=2000),
+    user: dict = Depends(require_role("owner")),
+    db: Database = Depends(get_db),
+):
+    """
+    Return bookings scoped to the caller's business_id.
+
+    Used by the Owner "All Bookings" page (frontend route /bookings).
+    Filter flags are optional — frontend can filter client-side too.
+    Max `limit` rows to avoid runaway payloads.
+    """
+    business_id = user["business_id"]
+
+    conditions = ["b.business_id = $1"]
+    params: list = [business_id]
+    idx = 2
+
+    if status:
+        conditions.append(f"b.status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    if date_from:
+        conditions.append(f"b.scheduled_date >= ${idx}")
+        params.append(to_date(date_from))
+        idx += 1
+
+    if date_to:
+        conditions.append(f"b.scheduled_date <= ${idx}")
+        params.append(to_date(date_to))
+        idx += 1
+
+    where = " AND ".join(conditions)
+
+    rows = await db.pool.fetch(
+        f"""
+        SELECT
+            b.id,
+            b.business_id,
+            b.scheduled_date,
+            b.scheduled_start,
+            b.scheduled_end,
+            b.estimated_duration_minutes,
+            b.status,
+            b.address_line1,
+            b.city,
+            b.state,
+            b.zip_code,
+            b.quoted_price,
+            b.final_price,
+            b.tax_amount,
+            b.adjustment_amount,
+            b.special_instructions,
+            b.team_id,
+            b.client_id,
+            b.service_id,
+            c.first_name AS client_first,
+            c.last_name  AS client_last,
+            s.name       AS service_name,
+            t.name       AS team_name,
+            t.color      AS team_color
+        FROM cleaning_bookings b
+        JOIN cleaning_clients c ON c.id = b.client_id
+        LEFT JOIN cleaning_services s ON s.id = b.service_id
+        LEFT JOIN cleaning_teams t ON t.id = b.team_id
+        WHERE {where}
+        ORDER BY b.scheduled_date DESC, b.scheduled_start DESC
+        LIMIT ${idx}
+        """,
+        *params, limit,
+    )
+
+    bookings = []
+    for row in rows:
+        first = row["client_first"] or ""
+        last = row["client_last"] or ""
+        client_name = f"{first} {last}".strip() or "—"
+
+        address_parts = [row["address_line1"], row["city"], row["state"]]
+        address = ", ".join(p for p in address_parts if p) or None
+
+        bookings.append({
+            "id": str(row["id"]),
+            "business_id": str(row["business_id"]),
+            "scheduled_date": str(row["scheduled_date"]) if row["scheduled_date"] else None,
+            "scheduled_start": str(row["scheduled_start"]) if row["scheduled_start"] else None,
+            "scheduled_end": str(row["scheduled_end"]) if row["scheduled_end"] else None,
+            "estimated_duration_minutes": row["estimated_duration_minutes"],
+            "status": row["status"],
+            "address": address,
+            "address_line1": row["address_line1"],
+            "city": row["city"],
+            "state": row["state"],
+            "zip_code": row["zip_code"],
+            "quoted_price": float(row["quoted_price"]) if row["quoted_price"] is not None else None,
+            "final_price": float(row["final_price"]) if row["final_price"] is not None else None,
+            "tax_amount": float(row["tax_amount"]) if row["tax_amount"] is not None else None,
+            "adjustment_amount": float(row["adjustment_amount"]) if row["adjustment_amount"] is not None else None,
+            "special_instructions": row["special_instructions"],
+            "client_id": str(row["client_id"]) if row["client_id"] else None,
+            "client_name": client_name,
+            "service_id": str(row["service_id"]) if row["service_id"] else None,
+            "service": row["service_name"],
+            "team_id": str(row["team_id"]) if row["team_id"] else None,
+            "team_name": row["team_name"],
+            "team_color": row["team_color"],
+        })
+
+    return {"bookings": bookings, "total": len(bookings)}
+
 
 @router.patch("/bookings/{booking_id}")
 async def patch_booking(

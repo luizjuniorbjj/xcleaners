@@ -30,13 +30,9 @@ window.OwnerBookings = {
     `;
 
     try {
-      // Use DemoData directly for bookings
-      if (typeof DemoData !== 'undefined') {
-        this._allBookings = DemoData._generateBookings().slice();
-      } else {
-        const resp = await CleanAPI.cleanGet('/bookings');
-        this._allBookings = (resp && resp.bookings) ? resp.bookings : (Array.isArray(resp) ? resp : []);
-      }
+      // Always call the real API — never serve DemoData in prod (was masking a cross-tenant leak appearance; see Sprint 100 #14).
+      const resp = await CleanAPI.cleanGet('/bookings');
+      this._allBookings = (resp && resp.bookings) ? resp.bookings : (Array.isArray(resp) ? resp : []);
       this._applyFilters();
       this._renderPage();
     } catch (err) {
