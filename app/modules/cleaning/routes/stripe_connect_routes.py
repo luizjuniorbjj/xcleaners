@@ -381,12 +381,24 @@ async def stripe_webhook(request: Request, db: Database = Depends(get_db)):
                 "reason": "no_booking_metadata",
             }
 
-        # Idempotent update. COALESCE keeps the first pi_id seen — prevents a
-        # late webhook with a different PI (e.g. a retry) from overwriting.
+        # Idempotent state-machine update (Smith N1 fix):
+        #   - COALESCE keeps the first pi_id seen — prevents a late webhook
+        #     with a different PI (e.g. a retry) from overwriting.
+        #   - payment_status CASE prevents regression of terminal states
+        #     (succeeded/failed) when Stripe delivers events out-of-order.
+        #     Example: '.processing' arriving AFTER '.succeeded' would wrongly
+        #     revert the booking to 'processing'. The CASE keeps 'succeeded'.
+        #   - Terminal→terminal transitions (succeeded↔failed) DO apply
+        #     (refunds, disputes). Non-terminal states always accept the new.
         result = await db.pool.execute(
             """
             UPDATE cleaning_bookings
-               SET payment_status = $1,
+               SET payment_status = CASE
+                   WHEN payment_status IN ('succeeded', 'failed')
+                        AND $1 NOT IN ('succeeded', 'failed')
+                        THEN payment_status
+                   ELSE $1
+                   END,
                    stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, $2)
              WHERE id = $3
             """,

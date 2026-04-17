@@ -306,6 +306,142 @@ async def test_webhook_payment_intent_unknown_booking_id_graceful(db, monkeypatc
 # ============================================================================
 
 
+# ============================================================================
+# N1 fix — state machine prevents regression of terminal states
+# ============================================================================
+
+
+async def _deliver_webhook(db, event_type, booking_id, pi_id, monkeypatch):
+    """Helper: deliver a fake PI webhook event for the given booking."""
+    monkeypatch.setattr(
+        "app.modules.cleaning.routes.stripe_connect_routes.STRIPE_WEBHOOK_SECRET",
+        "whsec_test",
+    )
+    event = {
+        "type": event_type,
+        "data": {"object": {
+            "id": pi_id,
+            "metadata": {"xcleaners_booking_id": str(booking_id)},
+        }},
+    }
+    with patch(
+        "stripe.Webhook.construct_event",
+        return_value=event,
+    ):
+        req = _make_request(event)
+        return await stripe_webhook(req, db)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("incoming_status,incoming_event", [
+    ("processing", "payment_intent.processing"),
+    ("requires_action", "payment_intent.requires_action"),
+    ("pending", "payment_intent.processing"),  # mapped → processing event but we test pending too
+])
+async def test_webhook_does_not_regress_from_succeeded(
+    db, biz_webhook, client_webhook, svc_webhook, monkeypatch,
+    incoming_status, incoming_event,
+):
+    """N1: booking=succeeded MUST NOT be regressed by late non-terminal events."""
+    booking_id = await _make_booking(db, biz_webhook, client_webhook, svc_webhook)
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status='succeeded', stripe_payment_intent_id='pi_original_ok' WHERE id=$1",
+        booking_id,
+    )
+
+    try:
+        await _deliver_webhook(db, incoming_event, booking_id, "pi_late_regression", monkeypatch)
+
+        row = await db.pool.fetchrow(
+            "SELECT payment_status, stripe_payment_intent_id FROM cleaning_bookings WHERE id=$1",
+            booking_id,
+        )
+        # Terminal 'succeeded' preserved despite incoming non-terminal event
+        assert row["payment_status"] == "succeeded", (
+            f"Regression detected: expected 'succeeded' to stick, got {row['payment_status']!r}"
+        )
+        # pi_id also preserved (COALESCE)
+        assert row["stripe_payment_intent_id"] == "pi_original_ok"
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+
+
+@pytest.mark.asyncio
+async def test_webhook_does_not_regress_failed_to_processing(
+    db, biz_webhook, client_webhook, svc_webhook, monkeypatch,
+):
+    """N1: booking=failed MUST NOT be regressed by late .processing event."""
+    booking_id = await _make_booking(db, biz_webhook, client_webhook, svc_webhook)
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status='failed' WHERE id=$1",
+        booking_id,
+    )
+
+    try:
+        await _deliver_webhook(
+            db, "payment_intent.processing", booking_id, "pi_late_proc", monkeypatch,
+        )
+
+        row = await db.pool.fetchrow(
+            "SELECT payment_status FROM cleaning_bookings WHERE id=$1",
+            booking_id,
+        )
+        assert row["payment_status"] == "failed"
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+
+
+@pytest.mark.asyncio
+async def test_webhook_allows_upgrade_pending_to_succeeded(
+    db, biz_webhook, client_webhook, svc_webhook, monkeypatch,
+):
+    """N1 sanity: non-terminal→terminal upgrade still applies normally."""
+    booking_id = await _make_booking(db, biz_webhook, client_webhook, svc_webhook)
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status='pending' WHERE id=$1",
+        booking_id,
+    )
+
+    try:
+        await _deliver_webhook(
+            db, "payment_intent.succeeded", booking_id, "pi_upgrade_ok", monkeypatch,
+        )
+
+        row = await db.pool.fetchrow(
+            "SELECT payment_status FROM cleaning_bookings WHERE id=$1",
+            booking_id,
+        )
+        assert row["payment_status"] == "succeeded"
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+
+
+@pytest.mark.asyncio
+async def test_webhook_allows_succeeded_to_failed_transition(
+    db, biz_webhook, client_webhook, svc_webhook, monkeypatch,
+):
+    """N1 edge: terminal-to-terminal transitions (refund/dispute) DO apply."""
+    booking_id = await _make_booking(db, biz_webhook, client_webhook, svc_webhook)
+    await db.pool.execute(
+        "UPDATE cleaning_bookings SET payment_status='succeeded' WHERE id=$1",
+        booking_id,
+    )
+
+    try:
+        await _deliver_webhook(
+            db, "payment_intent.payment_failed", booking_id, "pi_dispute", monkeypatch,
+        )
+
+        row = await db.pool.fetchrow(
+            "SELECT payment_status FROM cleaning_bookings WHERE id=$1",
+            booking_id,
+        )
+        # Owner must see the failure (dispute/refund is a real state change)
+        assert row["payment_status"] == "failed"
+    finally:
+        await db.pool.execute("DELETE FROM cleaning_bookings WHERE id = $1", booking_id)
+
+
 @pytest.mark.asyncio
 async def test_webhook_keeps_first_pi_id_not_overwrites(
     db, biz_webhook, client_webhook, svc_webhook, monkeypatch,
