@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, date
 from typing import Optional
 
+import asyncpg
+
 from app.database import Database
 from app.modules.cleaning.middleware.plan_guard import check_limit
 from app.security import encrypt_data, decrypt_data
@@ -140,12 +142,48 @@ async def create_client(
     values = list(insert_data.values())
     placeholders = [f"${i+1}" for i in range(len(columns))]
 
-    row = await db.pool.fetchrow(
-        f"""INSERT INTO cleaning_clients ({', '.join(columns)})
-            VALUES ({', '.join(placeholders)})
-            RETURNING *""",
-        *values,
-    )
+    # Core columns from migration 011 (always safe across all envs).
+    _BASIC_COLUMNS = {
+        "business_id", "first_name", "last_name", "email", "phone", "phone_secondary",
+        "address_line1", "address_line2", "city", "state", "zip_code", "country",
+        "latitude", "longitude", "property_type", "bedrooms", "bathrooms", "square_feet",
+        "has_pets", "pet_details", "access_instructions", "preferred_day",
+        "preferred_time_start", "preferred_time_end", "notes", "source",
+    }
+
+    try:
+        row = await db.pool.fetchrow(
+            f"""INSERT INTO cleaning_clients ({', '.join(columns)})
+                VALUES ({', '.join(placeholders)})
+                RETURNING *""",
+            *values,
+        )
+    except asyncpg.exceptions.UndefinedColumnError as e:
+        # Schema drift: migration 020 extended columns likely not applied yet.
+        # Fall back to migration-011 core columns so the create succeeds.
+        logger.warning(
+            "[CLIENTS] Schema drift detected on cleaning_clients INSERT (%s). "
+            "Retrying with migration-011 core columns only.", e
+        )
+        fallback_data = {k: v for k, v in insert_data.items() if k in _BASIC_COLUMNS}
+        fb_columns = list(fallback_data.keys())
+        fb_values = list(fallback_data.values())
+        fb_placeholders = [f"${i+1}" for i in range(len(fb_columns))]
+        row = await db.pool.fetchrow(
+            f"""INSERT INTO cleaning_clients ({', '.join(fb_columns)})
+                VALUES ({', '.join(fb_placeholders)})
+                RETURNING *""",
+            *fb_values,
+        )
+    except asyncpg.exceptions.NotNullViolationError as e:
+        return {"error": True, "status": 422,
+                "message": f"Missing required field: {e.column_name or 'unknown'}"}
+    except asyncpg.exceptions.CheckViolationError as e:
+        return {"error": True, "status": 422,
+                "message": f"Invalid value for constraint: {e.constraint_name or 'unknown'}"}
+    except asyncpg.exceptions.UniqueViolationError as e:
+        return {"error": True, "status": 409,
+                "message": f"Duplicate: {e.constraint_name or 'already exists'}"}
 
     result = _row_to_dict(row)
     return _decrypt_sensitive_fields(result, business_id)

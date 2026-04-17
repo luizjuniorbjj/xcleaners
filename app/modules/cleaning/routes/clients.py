@@ -125,6 +125,10 @@ async def api_create_client(
             },
         )
 
+    # Check for structured errors from the service (constraint violations etc)
+    if result.get("error"):
+        raise HTTPException(status_code=result["status"], detail=result["message"])
+
     return result
 
 
