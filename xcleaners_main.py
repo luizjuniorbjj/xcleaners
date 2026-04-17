@@ -63,6 +63,8 @@ from app.modules.cleaning.routes.stripe_connect_routes import (
     router as cleaning_stripe_connect_router,
     webhook_router as cleaning_stripe_webhook_router,
 )
+# Platform admin (cross-tenant, super_admin only)
+from app.modules.cleaning.routes.admin_routes import router as cleaning_admin_router
 
 # Auth router (needed for login/token endpoints)
 from app.auth import router as auth_router
@@ -204,6 +206,7 @@ app.include_router(cleaning_payroll_router)
 app.include_router(cleaning_recurring_router)
 app.include_router(cleaning_stripe_connect_router)
 app.include_router(cleaning_stripe_webhook_router)
+app.include_router(cleaning_admin_router)
 app.include_router(cleaning_app_router)
 
 
