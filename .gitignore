@@ -23,3 +23,9 @@ htmlcov/
 *.sqlite
 *.db
 .env.xcleaners
+
+# Local backups (sensitive — may contain bcrypt hashes, PII snapshots)
+backups/
+
+# Cloudflare Workers local cache
+.wrangler/
