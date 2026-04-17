@@ -313,9 +313,11 @@ window.Xcleaners = {
     // No nav links for super admin (single page)
     topNavLinks.innerHTML = '';
 
-    // User / logout
+    // User / switch role (if >1 role) / logout
+    const hasOtherRoles = (this._roles || []).length > 1;
     topNavUser.innerHTML = `
-      <span class="cc-text-sm" style="margin-right:var(--cc-space-3);color:var(--cc-neutral-600);">${this._user?.name || 'Admin'}</span>
+      <span class="cc-text-sm" style="margin-right:var(--cc-space-3);color:var(--cc-neutral-600);">${this._user?.name || this._user?.email || 'Admin'}</span>
+      ${hasOtherRoles ? `<button class="cc-btn cc-btn-sm cc-btn-secondary" onclick="Xcleaners.showRoleSwitcher()" style="margin-right:var(--cc-space-2);">Switch portal</button>` : ''}
       <button class="cc-btn cc-btn-sm cc-btn-ghost" onclick="Xcleaners.logout()">Log Out</button>
     `;
   },
