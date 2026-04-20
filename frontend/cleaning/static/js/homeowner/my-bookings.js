@@ -209,9 +209,16 @@ window.HomeownerMyBookings = {
 
   // ---- Request New Cleaning ----
 
-  _showRequestModal() {
-    // Get available services
-    const services = (typeof DemoData !== 'undefined') ? DemoData.getServices() : [];
+  async _showRequestModal() {
+    // Fetch real services from the homeowner's business. Fall back to empty
+    // list (the modal will just show a disabled message) if the call fails.
+    let services = [];
+    try {
+      services = await CleanAPI.cleanGet('/services');
+      if (!Array.isArray(services)) services = services?.services || [];
+    } catch (err) {
+      console.warn('[Request] could not load services:', err);
+    }
 
     const modal = document.createElement('div');
     modal.className = 'cc-modal-backdrop cc-visible';
@@ -225,9 +232,10 @@ window.HomeownerMyBookings = {
         <div class="cc-modal-body" style="display:flex;flex-direction:column;gap:var(--cc-space-4);">
           <div class="cc-form-group">
             <label class="cc-label">Service Type</label>
-            <select class="cc-select" id="req-service">
-              ${services.map(s => `<option value="${s.id}">${s.name} — $${s.base_price}</option>`).join('')}
-              ${services.length === 0 ? '<option>Standard Cleaning — $120</option>' : ''}
+            <select class="cc-select" id="req-service" ${services.length === 0 ? 'disabled' : ''}>
+              ${services.length === 0
+                ? '<option value="">No services available — please contact your cleaning company</option>'
+                : services.map(s => `<option value="${s.id}">${s.name} — $${Number(s.base_price || 0).toFixed(2)}</option>`).join('')}
             </select>
           </div>
           <div class="cc-form-group">
@@ -255,7 +263,7 @@ window.HomeownerMyBookings = {
         </div>
         <div class="cc-modal-footer" style="display:flex;gap:var(--cc-space-3);justify-content:flex-end;">
           <button class="cc-btn cc-btn-ghost" onclick="document.getElementById('request-modal').remove();">Cancel</button>
-          <button class="cc-btn cc-btn-primary" onclick="HomeownerMyBookings._submitRequest()">Request Cleaning</button>
+          <button class="cc-btn cc-btn-primary" id="req-submit-btn" ${services.length === 0 ? 'disabled' : ''} onclick="HomeownerMyBookings._submitRequest()">Request Cleaning</button>
         </div>
       </div>
     `;
@@ -267,21 +275,38 @@ window.HomeownerMyBookings = {
     const date = document.getElementById('req-date')?.value;
     const time = document.getElementById('req-time')?.value;
     const notes = document.getElementById('req-notes')?.value;
+    const btn = document.getElementById('req-submit-btn');
 
+    if (!service) {
+      Xcleaners.showToast('Please pick a service.', 'error');
+      return;
+    }
     if (!date) {
-      Xcleaners.showToast('Please choose a future date for your cleaning.', 'error');
+      Xcleaners.showToast('Please choose a date for your cleaning.', 'error');
       return;
     }
 
-    try {
-      await CleanAPI.cleanPost('/my-bookings/request', { service_id: service, date, time, notes });
-      Xcleaners.showToast('Cleaning request submitted. You\'ll be notified once it\'s confirmed.', 'success');
-    } catch {
-      Xcleaners.showToast('Cleaning request submitted. You\'ll be notified once it\'s confirmed.', 'success');
-    }
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
-    document.getElementById('request-modal')?.remove();
-    await this._loadBookings();
+    try {
+      const result = await CleanAPI.cleanPost('/my-bookings/request', {
+        service_id: service,
+        date,
+        time: time || '09:00',
+        notes: notes || null,
+      });
+      Xcleaners.showToast(
+        result?.message || 'Request submitted. You will be notified once confirmed.',
+        'success',
+      );
+      document.getElementById('request-modal')?.remove();
+      await this._loadBookings();
+    } catch (err) {
+      console.error('[Request] failed:', err);
+      const msg = (err && err.detail) || err?.message || 'Could not submit request. Please try again.';
+      Xcleaners.showToast(msg, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Request Cleaning'; }
+    }
   },
 
   // ---- Reschedule ----

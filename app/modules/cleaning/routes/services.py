@@ -52,10 +52,16 @@ router = APIRouter(
 async def list_services_route(
     slug: str,
     include_inactive: bool = Query(False, description="Include deactivated services"),
-    user: dict = Depends(require_role("owner")),
+    user: dict = Depends(require_role("owner", "homeowner", "team_lead", "cleaner")),
     db: Database = Depends(get_db),
 ):
-    """List all cleaning services for this business."""
+    """
+    List cleaning services for this business. Homeowners and crew see the
+    active catalog (read-only); owners can optionally include inactive rows.
+    """
+    # Homeowners and crew never see deactivated services
+    if user.get("cleaning_role") != "owner":
+        include_inactive = False
     result = await list_services(db, user["business_id"], include_inactive)
     return result
 
