@@ -10,7 +10,7 @@
  *   - CDN libs: Cache First
  */
 
-const CACHE_VERSION = 'xcleaners-v26';
+const CACHE_VERSION = 'xcleaners-v27';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;
@@ -26,7 +26,7 @@ const SHELL_ASSETS = [
   '/cleaning/static/js/shared/sse-client.js?v=12',
   '/cleaning/static/js/shared/offline-store.js?v=11',
   '/cleaning/static/js/shared/i18n.js?v=11',
-  '/cleaning/static/js/auth-ui.js?v=15',
+  '/cleaning/static/js/auth-ui.js?v=16',
   '/cleaning/static/js/router.js?v=14',
   '/cleaning/static/js/app.js?v=14',
   '/cleaning/static/vendor/fullcalendar.min.js',
