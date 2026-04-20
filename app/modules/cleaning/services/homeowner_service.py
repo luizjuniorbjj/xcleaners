@@ -268,7 +268,7 @@ async def cancel_booking(
     Late cancellations (< 24h) require owner approval (not blocked, but flagged).
     """
     booking = await db.pool.fetchrow(
-        """SELECT id, scheduled_date, status, team_id,
+        """SELECT b.id, b.scheduled_date, b.status, b.team_id,
                   c.first_name || ' ' || COALESCE(c.last_name, '') AS client_name
            FROM cleaning_bookings b
            JOIN cleaning_clients c ON c.id = b.client_id

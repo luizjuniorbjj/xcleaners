@@ -366,7 +366,6 @@ window.HomeownerMyBookings = {
   async _submitReschedule(bookingId) {
     const date = document.getElementById('resched-date')?.value;
     const time = document.getElementById('resched-time')?.value;
-    const reason = document.getElementById('resched-reason')?.value;
 
     if (!date) {
       Xcleaners.showToast('Please select a new date to reschedule.', 'error');
@@ -374,12 +373,18 @@ window.HomeownerMyBookings = {
     }
 
     try {
-      await CleanAPI.cleanPatch(`/my-bookings/${bookingId}/reschedule`, { date, time, reason });
-    } catch { /* demo mode */ }
-
-    Xcleaners.showToast('Booking rescheduled. Your cleaning team has been notified.', 'success');
-    document.getElementById('reschedule-modal')?.remove();
-    await this._loadBookings();
+      await CleanAPI.cleanPost(`/my-bookings/${bookingId}/reschedule`, {
+        new_date: date,
+        new_time: time || null,
+      });
+      Xcleaners.showToast('Booking rescheduled. Your cleaning team has been notified.', 'success');
+      document.getElementById('reschedule-modal')?.remove();
+      await this._loadBookings();
+    } catch (err) {
+      console.error('[Reschedule] failed:', err);
+      const msg = (err && err.detail) || err?.message || 'Could not reschedule. Please try again.';
+      Xcleaners.showToast(msg, 'error');
+    }
   },
 
   // ---- Cancel ----
@@ -419,12 +424,15 @@ window.HomeownerMyBookings = {
     const reason = document.getElementById('cancel-reason')?.value;
 
     try {
-      await CleanAPI.cleanPatch(`/my-bookings/${bookingId}/cancel`, { reason });
-    } catch { /* demo mode */ }
-
-    Xcleaners.showToast('Booking cancelled. Your cleaning team has been notified.', 'warning');
-    document.getElementById('cancel-modal')?.remove();
-    await this._loadBookings();
+      await CleanAPI.cleanPost(`/my-bookings/${bookingId}/cancel`, { reason });
+      Xcleaners.showToast('Booking cancelled. Your cleaning team has been notified.', 'warning');
+      document.getElementById('cancel-modal')?.remove();
+      await this._loadBookings();
+    } catch (err) {
+      console.error('[Cancel] failed:', err);
+      const msg = (err && err.detail) || err?.message || 'Could not cancel. Please try again.';
+      Xcleaners.showToast(msg, 'error');
+    }
   },
 
   _esc(str) {
