@@ -206,12 +206,18 @@ async def reschedule_booking(
             "message": "This booking cannot be rescheduled. Must be at least 24 hours before the scheduled date and status must be scheduled or confirmed.",
         }
 
+    from datetime import time as _time
     old_date = str(booking["scheduled_date"])
     old_start = str(booking["scheduled_start"]) if booking["scheduled_start"] else None
 
-    update_fields = {"scheduled_date": new_date}
+    # Coerce incoming strings to the actual DB types asyncpg expects
+    new_date_obj = date.fromisoformat(new_date) if isinstance(new_date, str) else new_date
+    update_fields = {"scheduled_date": new_date_obj}
     if new_time:
-        update_fields["scheduled_start"] = new_time
+        update_fields["scheduled_start"] = (
+            _time.fromisoformat(new_time if len(new_time) > 5 else new_time + ":00")
+            if isinstance(new_time, str) else new_time
+        )
 
     # Update booking
     set_clause = ", ".join(f"{k} = ${i+1}" for i, k in enumerate(update_fields.keys()))
