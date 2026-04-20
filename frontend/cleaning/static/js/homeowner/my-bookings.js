@@ -208,15 +208,27 @@ window.HomeownerMyBookings = {
           </div>
 
           <!-- Status & Actions -->
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:var(--cc-space-2);flex-shrink:0;">
-            <span class="cc-badge ${badgeClass}">${label}</span>
-            ${b.status === 'scheduled' || b.status === 'confirmed' || b.status === 'pending' || b.status === 'draft' ? `
-              <div style="display:flex;gap:var(--cc-space-1);" onclick="event.stopPropagation();">
-                <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="HomeownerMyBookings._reschedule('${b.id}')" title="Reschedule">Reschedule</button>
-                <button class="cc-btn cc-btn-xs cc-btn-ghost" style="color:var(--cc-danger-500);" onclick="HomeownerMyBookings._cancel('${b.id}')" title="Cancel">Cancel</button>
+          ${(() => {
+            const activeStatus = b.status === 'scheduled' || b.status === 'confirmed' || b.status === 'pending' || b.status === 'draft' || b.status === 'rescheduled';
+            const rescheduleCount = Number(b.reschedule_count || 0);
+            const maxReschedules = Number(b.max_reschedules || 1);
+            const limitReached = rescheduleCount >= maxReschedules;
+            const canReschedule = activeStatus && !limitReached;
+            return `
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:var(--cc-space-2);flex-shrink:0;">
+                <span class="cc-badge ${badgeClass}">${label}</span>
+                ${activeStatus ? `
+                  <div style="display:flex;gap:var(--cc-space-1);align-items:center;" onclick="event.stopPropagation();">
+                    ${canReschedule
+                      ? `<button class="cc-btn cc-btn-xs cc-btn-outline" onclick="HomeownerMyBookings._reschedule('${b.id}')" title="Reschedule">Reschedule</button>`
+                      : `<span class="cc-badge cc-badge-neutral" title="Already rescheduled (${rescheduleCount}/${maxReschedules})" style="opacity:0.7;font-size:var(--cc-text-xs);padding:2px 6px;">Already rescheduled</span>`
+                    }
+                    <button class="cc-btn cc-btn-xs cc-btn-ghost" style="color:var(--cc-danger-500);" onclick="HomeownerMyBookings._cancel('${b.id}')" title="Cancel">Cancel</button>
+                  </div>
+                ` : ''}
               </div>
-            ` : ''}
-          </div>
+            `;
+          })()}
         </div>
       `;
     }).join('');
@@ -377,23 +389,67 @@ window.HomeownerMyBookings = {
     }
 
     try {
-      await CleanAPI.cleanPost(`/my-bookings/${bookingId}/reschedule`, {
+      const result = await CleanAPI.cleanPost(`/my-bookings/${bookingId}/reschedule`, {
         new_date: date,
         new_time: time || null,
       });
-      Xcleaners.showToast('Booking rescheduled. Your cleaning team has been notified.', 'success');
+      const remaining = Number(result?.reschedules_remaining);
+      const toastMsg = Number.isFinite(remaining) && remaining === 0
+        ? 'Booking rescheduled. This was your last allowed change — contact support for further changes.'
+        : 'Booking rescheduled. Your cleaning team has been notified.';
+      Xcleaners.showToast(toastMsg, 'success');
       document.getElementById('reschedule-modal')?.remove();
       await this._loadBookings();
     } catch (err) {
       console.error('[Reschedule] failed:', err);
-      const msg = (err && err.detail) || err?.message || 'Could not reschedule. Please try again.';
+      // Backend returns structured 409 with `reason` for limit vs window errors.
+      // err.detail carries the parsed body from the API wrapper.
+      const body = (err && typeof err.detail === 'object') ? err.detail : (err || {});
+      const reason = body.reason;
+      let msg;
+      if (reason === 'limit_reached' || reason === 'limit_reached_race') {
+        const max = body.max_reschedules ?? 1;
+        const curr = body.reschedule_count ?? max;
+        msg = `Reschedule limit reached (${curr}/${max}). Please cancel instead if needed.`;
+      } else {
+        msg = body.message || (typeof err.detail === 'string' ? err.detail : null) || err?.message || 'Could not reschedule. Please try again.';
+      }
       Xcleaners.showToast(msg, 'error');
     }
   },
 
   // ---- Cancel ----
 
-  _cancel(bookingId) {
+  async _cancel(bookingId) {
+    // Fetch booking detail so we can show the real fee preview (or graceful
+    // fallback if the read fails — don't block the user from cancelling).
+    let detail = null;
+    try {
+      detail = await CleanAPI.cleanGet(`/my-bookings/${bookingId}`);
+    } catch (err) {
+      console.warn('[Cancel] could not load detail for fee preview:', err);
+    }
+
+    const isLate = detail && detail.late_cancellation === true;
+    const feeAmount = detail ? Number(detail.late_cancellation_fee || 0) : 0;
+
+    let warningHtml = '';
+    if (isLate && feeAmount > 0) {
+      warningHtml = `
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--cc-radius-md);padding:var(--cc-space-3);margin-bottom:var(--cc-space-4);color:#991b1b;">
+          <div style="font-weight:var(--cc-font-semibold);margin-bottom:var(--cc-space-1);">⚠️ Late cancellation</div>
+          <div style="font-size:var(--cc-text-sm);">A fee of <strong>$${feeAmount.toFixed(2)}</strong> applies per your cleaning company's policy.</div>
+        </div>
+      `;
+    } else if (isLate) {
+      warningHtml = `
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:var(--cc-radius-md);padding:var(--cc-space-3);margin-bottom:var(--cc-space-4);color:#92400e;">
+          <div style="font-weight:var(--cc-font-semibold);margin-bottom:var(--cc-space-1);">⚠️ This is a late cancellation</div>
+          <div style="font-size:var(--cc-text-sm);">Please check with your cleaning company for any policy terms.</div>
+        </div>
+      `;
+    }
+
     const modal = document.createElement('div');
     modal.className = 'cc-modal-backdrop cc-visible';
     modal.id = 'cancel-modal';
@@ -404,7 +460,8 @@ window.HomeownerMyBookings = {
           <button class="cc-btn cc-btn-ghost cc-btn-sm" onclick="document.getElementById('cancel-modal').remove();">&times;</button>
         </div>
         <div class="cc-modal-body">
-          <p style="margin-bottom:var(--cc-space-4);">Are you sure you want to cancel this cleaning? Cancellations within 24 hours may incur a fee.</p>
+          ${warningHtml}
+          <p style="margin-bottom:var(--cc-space-4);">Are you sure you want to cancel this cleaning?</p>
           <div class="cc-form-group">
             <label class="cc-label">Reason for cancellation</label>
             <select class="cc-select" id="cancel-reason">
@@ -428,8 +485,12 @@ window.HomeownerMyBookings = {
     const reason = document.getElementById('cancel-reason')?.value;
 
     try {
-      await CleanAPI.cleanPost(`/my-bookings/${bookingId}/cancel`, { reason });
-      Xcleaners.showToast('Booking cancelled. Your cleaning team has been notified.', 'warning');
+      const result = await CleanAPI.cleanPost(`/my-bookings/${bookingId}/cancel`, { reason });
+      const fee = Number(result?.fee_amount || 0);
+      const toastMsg = fee > 0
+        ? `Booking cancelled. A fee of $${fee.toFixed(2)} will be billed per policy.`
+        : 'Booking cancelled. Your cleaning team has been notified.';
+      Xcleaners.showToast(toastMsg, 'warning');
       document.getElementById('cancel-modal')?.remove();
       await this._loadBookings();
     } catch (err) {
