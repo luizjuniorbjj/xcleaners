@@ -165,6 +165,18 @@ async def cancel_route(
     if isinstance(result, dict) and result.get("error"):
         raise HTTPException(status_code=result["status_code"], detail=result["message"])
 
+    # Owner notification — fire-and-forget
+    try:
+        from app.modules.cleaning.services.email_service import send_owner_booking_cancelled
+        await send_owner_booking_cancelled(
+            db, booking_id, reason=body.reason or "", cancelled_by="client",
+        )
+    except Exception:
+        import logging
+        logging.getLogger("xcleaners.homeowner").exception(
+            "cancel_route: owner alert failed for %s", booking_id,
+        )
+
     return result
 
 

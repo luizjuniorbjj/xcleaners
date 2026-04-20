@@ -384,6 +384,265 @@ async def send_homeowner_invite(
     )
 
 
+# ============================================
+# OWNER NOTIFICATIONS (business → owners + leads)
+# ============================================
+
+async def _get_owner_notification_emails(
+    db: Database,
+    business_id: str,
+) -> list:
+    """
+    Return list of emails to notify for business-level events.
+    Includes:
+      - All users with cleaning_user_roles.role='owner' (primary)
+      - All cleaning_members with role in (lead_cleaner, supervisor, manager)
+    Dedup'd + filtered to non-null emails.
+    """
+    rows = await db.pool.fetch(
+        """
+        SELECT DISTINCT email FROM (
+            SELECT u.email
+              FROM users u
+              JOIN cleaning_user_roles cur ON cur.user_id = u.id
+             WHERE cur.business_id = $1
+               AND cur.role = 'owner'
+               AND cur.is_active = TRUE
+            UNION
+            SELECT cm.email
+              FROM cleaning_members cm
+             WHERE cm.business_id = $1
+               AND cm.role IN ('lead_cleaner', 'supervisor', 'manager')
+               AND cm.status = 'active'
+               AND cm.email IS NOT NULL
+        ) recipients
+        WHERE email IS NOT NULL
+        """,
+        business_id,
+    )
+    return [r["email"] for r in rows if r["email"]]
+
+
+async def send_owner_alert(
+    db: Database,
+    business_id: str,
+    subject: str,
+    title: str,
+    body_html: str,
+    cta_link: Optional[str] = None,
+    cta_text: Optional[str] = None,
+) -> dict:
+    """
+    Fan-out a business-level alert email to all owners + operational leads.
+    Fire-and-forget: failures per-recipient are logged but do not raise.
+    Returns {sent_count, failed_count, recipients}.
+    """
+    recipients = await _get_owner_notification_emails(db, business_id)
+    if not recipients:
+        logger.info("[OWNER_ALERT] No recipients for business %s — skipped", business_id)
+        return {"sent_count": 0, "failed_count": 0, "recipients": []}
+
+    html_body = _template_owner_alert(title, body_html, cta_link, cta_text)
+    sent = 0
+    failed = 0
+    for addr in recipients:
+        result = await send_email(
+            to=addr,
+            subject=subject,
+            html_body=html_body,
+            category="contact",  # from contact@ so replies reach the business inbox
+        )
+        if result.get("sent"):
+            sent += 1
+        else:
+            failed += 1
+    logger.info(
+        "[OWNER_ALERT] business=%s subject=%r sent=%d failed=%d",
+        business_id, subject, sent, failed,
+    )
+    return {"sent_count": sent, "failed_count": failed, "recipients": recipients}
+
+
+async def send_owner_new_client(db: Database, client_id: str) -> dict:
+    """Owner alert: a client activated their portal account."""
+    row = await db.pool.fetchrow(
+        """SELECT c.first_name, c.last_name, c.email, c.business_id,
+                  b.slug AS biz_slug
+             FROM cleaning_clients c
+             JOIN businesses b ON b.id = c.business_id
+            WHERE c.id = $1""",
+        client_id,
+    )
+    if not row:
+        return {"sent_count": 0, "failed_count": 0}
+
+    from app.config import APP_URL
+    client_name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or "A client"
+    biz_id = str(row["business_id"])
+    body = (
+        f"<p><strong>{html_escape(client_name)}</strong> just activated their "
+        f"client portal account with email <em>{html_escape(row['email'] or '')}</em>.</p>"
+        f"<p>They can now view their bookings, invoices, and save payment methods online.</p>"
+    )
+    return await send_owner_alert(
+        db=db,
+        business_id=biz_id,
+        subject=f"✨ New client activated: {client_name}",
+        title="New client active",
+        body_html=body,
+        cta_link=f"{APP_URL}/clients",
+        cta_text="View in Xcleaners",
+    )
+
+
+async def send_owner_new_booking(db: Database, booking_id: str) -> dict:
+    """Owner alert: a new booking was created."""
+    row = await db.pool.fetchrow(
+        """SELECT b.scheduled_date, b.scheduled_start, b.final_price, b.business_id,
+                  c.first_name, c.last_name,
+                  s.name AS service_name,
+                  t.name AS team_name
+             FROM cleaning_bookings b
+             JOIN cleaning_clients c ON c.id = b.client_id
+        LEFT JOIN cleaning_services s ON s.id = b.service_id
+        LEFT JOIN cleaning_teams t ON t.id = b.team_id
+            WHERE b.id = $1""",
+        booking_id,
+    )
+    if not row:
+        return {"sent_count": 0, "failed_count": 0}
+
+    from app.config import APP_URL
+    client_name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or "Client"
+    service_name = row["service_name"] or "Cleaning"
+    team_name = row["team_name"] or "Unassigned"
+    price = f"${float(row['final_price'] or 0):,.2f}"
+    body = (
+        f"<p><strong>{html_escape(service_name)}</strong> booked for "
+        f"<strong>{html_escape(client_name)}</strong>.</p>"
+        f"<ul>"
+        f"<li><strong>Date:</strong> {row['scheduled_date']} at {row['scheduled_start']}</li>"
+        f"<li><strong>Team:</strong> {html_escape(team_name)}</li>"
+        f"<li><strong>Price:</strong> {price}</li>"
+        f"</ul>"
+    )
+    return await send_owner_alert(
+        db=db,
+        business_id=str(row["business_id"]),
+        subject=f"📅 New booking: {client_name} — {row['scheduled_date']}",
+        title="New booking",
+        body_html=body,
+        cta_link=f"{APP_URL}/schedule",
+        cta_text="View schedule",
+    )
+
+
+async def send_owner_booking_cancelled(
+    db: Database,
+    booking_id: str,
+    reason: str = "",
+    cancelled_by: str = "client",
+) -> dict:
+    """Owner alert: a booking was cancelled."""
+    row = await db.pool.fetchrow(
+        """SELECT b.scheduled_date, b.scheduled_start, b.business_id,
+                  c.first_name, c.last_name
+             FROM cleaning_bookings b
+             JOIN cleaning_clients c ON c.id = b.client_id
+            WHERE b.id = $1""",
+        booking_id,
+    )
+    if not row:
+        return {"sent_count": 0, "failed_count": 0}
+
+    from app.config import APP_URL
+    client_name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or "Client"
+    reason_html = f"<p><strong>Reason:</strong> {html_escape(reason)}</p>" if reason else ""
+    body = (
+        f"<p><strong>{html_escape(client_name)}</strong> cancelled their booking "
+        f"scheduled for <strong>{row['scheduled_date']} at {row['scheduled_start']}</strong>.</p>"
+        f"{reason_html}"
+        f"<p><em>Cancelled by: {html_escape(cancelled_by)}</em></p>"
+    )
+    return await send_owner_alert(
+        db=db,
+        business_id=str(row["business_id"]),
+        subject=f"❌ Booking cancelled: {client_name} — {row['scheduled_date']}",
+        title="Booking cancelled",
+        body_html=body,
+        cta_link=f"{APP_URL}/bookings",
+        cta_text="View bookings",
+    )
+
+
+async def send_invoice_paid_confirmation(
+    db: Database,
+    invoice_id: str,
+    amount_paid: float,
+) -> dict:
+    """
+    Duplex notification triggered by webhook when invoice transitions to paid:
+      1. Receipt to the client
+      2. Alert to owners + leads
+    """
+    inv = await db.pool.fetchrow(
+        """SELECT i.invoice_number, i.total, i.business_id,
+                  c.first_name, c.last_name, c.email AS client_email
+             FROM cleaning_invoices i
+             JOIN cleaning_clients c ON c.id = i.client_id
+            WHERE i.id = $1""",
+        invoice_id,
+    )
+    if not inv:
+        return {"client": {"sent": False}, "owner": {"sent_count": 0}}
+
+    from app.config import APP_URL
+    client_name = f"{inv['first_name'] or ''} {inv['last_name'] or ''}".strip() or "Client"
+    biz_id = str(inv["business_id"])
+    amount_str = f"${amount_paid:,.2f}"
+
+    # 1. Client receipt
+    client_result = {"sent": False}
+    if inv["client_email"]:
+        receipt_body = (
+            f"<p>Hi {html_escape(client_name)},</p>"
+            f"<p>Thank you! We've received your payment of <strong>{amount_str}</strong> "
+            f"for invoice <strong>{inv['invoice_number']}</strong>.</p>"
+            f"<p>A copy of your receipt is available in your client portal.</p>"
+        )
+        receipt_html = _template_owner_alert(
+            title="Payment received — thank you!",
+            body_html=receipt_body,
+            cta_link=f"{APP_URL}/my-invoices",
+            cta_text="View receipt",
+        )
+        client_result = await send_email(
+            to=inv["client_email"],
+            subject=f"Payment received — {inv['invoice_number']}",
+            html_body=receipt_html,
+            category="invoice",
+        )
+
+    # 2. Owner alert
+    owner_body = (
+        f"<p><strong>{html_escape(client_name)}</strong> paid "
+        f"<strong>{amount_str}</strong> for invoice "
+        f"<strong>{inv['invoice_number']}</strong>.</p>"
+        f"<p>Funds will be transferred to your connected Stripe account "
+        f"on the next payout cycle (typically T+2).</p>"
+    )
+    owner_result = await send_owner_alert(
+        db=db,
+        business_id=biz_id,
+        subject=f"💰 Payment received: {amount_str} from {client_name}",
+        title="Payment received",
+        body_html=owner_body,
+        cta_link=f"{APP_URL}/invoices",
+        cta_text="View invoices",
+    )
+    return {"client": client_result, "owner": owner_result}
+
+
 async def send_team_invite(
     db: Database,
     business_id: str,
@@ -636,6 +895,26 @@ def _template_invoice_reminder(
 <p style="color:#555;font-size:14px;line-height:1.6;">Please settle this invoice at your earliest convenience. Thank you!</p>
 """
     return _base_template("Payment Reminder", content)
+
+
+def _template_owner_alert(
+    title: str,
+    body_html: str,
+    cta_link: Optional[str] = None,
+    cta_text: Optional[str] = None,
+) -> str:
+    """
+    Generic business-facing alert template. Title + pre-escaped HTML body + optional CTA.
+    Caller is responsible for escaping user-controlled strings in body_html.
+    """
+    btn = _button(cta_text, cta_link) if (cta_link and cta_text) else ""
+    content = f"""
+<h2 style="margin:0 0 16px;color:#333;font-size:20px;">{html_escape(title)}</h2>
+<div style="color:#555;font-size:15px;line-height:1.6;">{body_html}</div>
+{btn}
+<p style="color:#999;font-size:12px;line-height:1.6;margin-top:24px;">You're receiving this because you manage this business on Xcleaners. Reply to this email to contact our team.</p>
+"""
+    return _base_template(title, content)
 
 
 def _template_team_invite(

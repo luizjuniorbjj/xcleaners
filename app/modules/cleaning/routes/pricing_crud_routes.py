@@ -773,6 +773,13 @@ async def create_booking(
             source=body.source,
             status="scheduled",
         )
+        # Owner notification — fire-and-forget, never blocks booking creation
+        try:
+            from app.modules.cleaning.services.email_service import send_owner_new_booking
+            await send_owner_new_booking(db, result["booking_id"])
+        except Exception:
+            logger.exception("create_booking: owner alert failed for %s", result["booking_id"])
+
         return {
             "booking_id": result["booking_id"],
             "final_price": str(result["breakdown"]["final_amount"]),

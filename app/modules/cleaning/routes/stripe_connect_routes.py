@@ -472,6 +472,17 @@ async def stripe_webhook(request: Request, db: Database = Depends(get_db)):
                 "stripe_webhook: invoice %s marked paid ($%.2f) via session %s",
                 invoice_id, amount_total, session.get("id"),
             )
+            # Duplex notification: client receipt + owner alert (fire-and-forget)
+            try:
+                from app.modules.cleaning.services.email_service import (
+                    send_invoice_paid_confirmation,
+                )
+                await send_invoice_paid_confirmation(db, invoice_id, amount_total)
+            except Exception:
+                logger.exception(
+                    "stripe_webhook: payment confirmation emails failed for invoice %s",
+                    invoice_id,
+                )
         return {"received": True, "processed": True, "type": event_type}
 
     # Unknown/unhandled event types still return 200 so Stripe doesn't retry
