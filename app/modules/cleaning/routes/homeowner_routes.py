@@ -152,7 +152,7 @@ async def request_booking_route(
         raise HTTPException(status_code=400, detail="Invalid service selection.")
 
     service = await db.pool.fetchrow(
-        """SELECT id, name, base_price, duration_minutes
+        """SELECT id, name, base_price, estimated_duration_minutes
            FROM cleaning_services
            WHERE id = $1 AND business_id = $2 AND is_active = true""",
         service_uuid, business_id,
@@ -168,8 +168,8 @@ async def request_booking_route(
         _uuid.UUID(client_id),
     )
 
-    duration = service["duration_minutes"] or 120
-    price = service["base_price"] or 0
+    duration = service["estimated_duration_minutes"] or 120
+    price = service["base_price"]  # NUMERIC, may be None → pass through
     scheduled_end = (datetime.combine(req_date, req_time) + timedelta(minutes=duration)).time()
 
     booking_id = await db.pool.fetchval(
