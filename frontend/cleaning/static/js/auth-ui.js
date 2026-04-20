@@ -327,6 +327,15 @@ window.AuthUI = {
       return false;
     }
 
+    // Terms of Service must be accepted (backend enforces)
+    const termsCheckbox = document.getElementById('reg-terms');
+    const acceptedTerms = termsCheckbox && termsCheckbox.checked;
+    if (!acceptedTerms) {
+      errorEl.textContent = 'You must accept the Terms of Service and Privacy Policy to continue.';
+      errorEl.style.display = 'block';
+      return false;
+    }
+
     submitBtn.disabled = true;
     submitBtn.classList.add('cc-btn-loading');
     submitBtn.textContent = 'Creating account...';
@@ -342,7 +351,7 @@ window.AuthUI = {
         const testResp = await fetch(`${window.location.origin}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome: name, email, password }),
+          body: JSON.stringify({ nome: name, email, password, accepted_terms: true }),
         });
         if (testResp.ok) {
           const data = await testResp.json();
@@ -399,7 +408,7 @@ window.AuthUI = {
 
     try {
       // Register via API (non-demo mode)
-      const regBody = { nome: name, email, password };
+      const regBody = { nome: name, email, password, accepted_terms: true };
       if (isHomeowner) {
         regBody.role = 'homeowner';
         regBody.business_code = businessCode;
