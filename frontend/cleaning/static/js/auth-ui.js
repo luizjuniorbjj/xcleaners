@@ -340,6 +340,40 @@ window.AuthUI = {
     submitBtn.classList.add('cc-btn-loading');
     submitBtn.textContent = 'Creating account...';
 
+    // Invite flow: homeowner self-register from email link. Uses a dedicated
+    // public endpoint that validates the UUID token, creates/links the user,
+    // and returns tokens. No demo fallback — errors here must surface so the
+    // client knows what went wrong instead of silently landing on a fake demo.
+    if (inviteToken) {
+      try {
+        const resp = await fetch(`${window.location.origin}/api/v1/clean/accept-client-invite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invite_token: inviteToken,
+            nome: name,
+            password,
+            accepted_terms: true,
+          }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.detail || 'Invitation could not be accepted.');
+        }
+        const data = await resp.json();
+        CleanAPI.setTokens(data.access_token, data.refresh_token);
+        await Xcleaners.initAfterAuth();
+      } catch (err) {
+        errorEl.textContent = err.message || 'Invitation could not be accepted.';
+        errorEl.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('cc-btn-loading');
+        submitBtn.textContent = 'Accept Invitation';
+      }
+      return false;
+    }
+
     // Demo mode: if any email/password passes basic validation, log in as demo
     const isDemoMode = typeof Xcleaners !== 'undefined' && (Xcleaners._demoMode || (Xcleaners._user && Xcleaners._user.id && Xcleaners._user.id.startsWith('demo-')));
     // Also detect demo mode if the demo accounts exist and no real backend

@@ -68,6 +68,23 @@ class AcceptInviteRequest(BaseModel):
     invite_token: str
 
 
+class AcceptClientInviteRequest(BaseModel):
+    """Public endpoint body: homeowner self-registers from an email link."""
+    invite_token: str = Field(..., description="UUID from cleaning_clients.invite_token")
+    nome: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=8, max_length=200)
+    accepted_terms: bool = Field(..., description="Must be true — TOS/Privacy acceptance")
+
+
+class AcceptClientInviteResponse(BaseModel):
+    """Response after accepting a client invite — logs the homeowner in."""
+    access_token: str
+    refresh_token: str
+    business_slug: str
+    business_name: str
+    client_id: str
+
+
 # ============================================
 # RESPONSE MODELS
 # ============================================

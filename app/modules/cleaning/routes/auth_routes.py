@@ -25,6 +25,8 @@ from app.config import SECRET_KEY
 from app.database import get_db, Database
 from app.modules.cleaning.models.auth import (
     PLAN_LIMITS,
+    AcceptClientInviteRequest,
+    AcceptClientInviteResponse,
     AcceptInviteRequest,
     AcceptInviteResponse,
     CleaningRoleInfo,
@@ -32,6 +34,7 @@ from app.modules.cleaning.models.auth import (
     InviteResponse,
     MyRolesResponse,
 )
+from app.security import create_access_token, create_refresh_token, hash_password
 from app.modules.cleaning.middleware.plan_guard import get_business_plan
 from app.modules.cleaning.middleware.role_guard import require_role
 from app.modules.cleaning.routes.auth_middleware import (
@@ -338,6 +341,147 @@ async def accept_invite(
         team_name=team_name,
         business_slug=biz["slug"] if biz else slug,
         business_name=biz["name"] if biz else slug,
+    )
+
+
+# ============================================
+# POST /api/v1/clean/accept-client-invite  (public — no auth required)
+# ============================================
+
+@router.post("/accept-client-invite", response_model=AcceptClientInviteResponse)
+async def accept_client_invite(
+    body: AcceptClientInviteRequest,
+    db: Database = Depends(get_db),
+):
+    """
+    Homeowner self-register from invitation email.
+
+    Flow:
+      1. Validate UUID invite_token against cleaning_clients (not expired, not used)
+      2. Find or create the underlying user (matched by cleaning_clients.email)
+      3. Link cleaning_clients.user_id and clear the token
+      4. Upsert an active cleaning_user_roles row with role='homeowner'
+      5. Return access + refresh tokens so the homeowner is logged in immediately
+    """
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    if not body.accepted_terms:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the Terms of Service and Privacy Policy.",
+        )
+
+    try:
+        token_uuid = _uuid.UUID(body.invite_token)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid invitation token.")
+
+    # 1. Look up the invite
+    client = await db.pool.fetchrow(
+        """SELECT c.id, c.business_id, c.email, c.first_name, c.last_name,
+                  c.user_id, c.invite_expires_at,
+                  b.slug AS business_slug, b.name AS business_name
+           FROM cleaning_clients c
+           JOIN businesses b ON b.id = c.business_id
+           WHERE c.invite_token = $1""",
+        token_uuid,
+    )
+
+    if not client:
+        raise HTTPException(status_code=400, detail="Invalid or already-used invitation token.")
+
+    now = datetime.now(timezone.utc)
+    if client["invite_expires_at"] and client["invite_expires_at"] < now:
+        raise HTTPException(status_code=400, detail="This invitation has expired. Ask for a new one.")
+
+    if client["user_id"]:
+        # Token still present but client already linked — defensive, shouldn't
+        # normally happen because acceptance clears the token.
+        raise HTTPException(status_code=409, detail="This invitation has already been used.")
+
+    if not client["email"]:
+        raise HTTPException(status_code=400, detail="Invitation is missing an email. Contact your cleaning company.")
+
+    email = client["email"].strip().lower()
+    business_id = str(client["business_id"])
+    client_id = str(client["id"])
+
+    # 2. Find or create the user. We match by email so re-invited addresses don't duplicate.
+    existing_user = await db.get_user_by_email(email)
+    if existing_user:
+        user_id = str(existing_user["id"])
+        user_role = existing_user.get("role") or "lead"
+        # If the existing user has no password (e.g. OAuth-only), set the one
+        # provided now so they can actually sign in with it.
+        if not existing_user.get("hashed_password"):
+            await db.update_user_password(user_id, hash_password(body.password))
+    else:
+        created = await db.create_user(
+            email=email,
+            hashed_password=hash_password(body.password),
+            nome=body.nome,
+            role="lead",
+        )
+        user_id = str(created["id"])
+        user_role = created.get("role") or "lead"
+        # Minimal profile — keeps welcome flows consistent with /auth/register.
+        try:
+            await db.create_user_profile(user_id=user_id, nome=body.nome, language="en")
+        except Exception:
+            logger.exception("[accept-client-invite] profile creation failed for %s", user_id)
+
+    # 3. Link client + clear token so the UUID cannot be replayed
+    await db.pool.execute(
+        """UPDATE cleaning_clients
+           SET user_id = $1,
+               invite_token = NULL,
+               invite_sent_at = NULL,
+               invite_expires_at = NULL,
+               updated_at = NOW()
+           WHERE id = $2""",
+        user_id, client_id,
+    )
+
+    # 4. Upsert homeowner role
+    existing_role = await db.pool.fetchrow(
+        """SELECT id, is_active FROM cleaning_user_roles
+           WHERE business_id = $1 AND user_id = $2 AND role = 'homeowner'""",
+        business_id, user_id,
+    )
+    if existing_role:
+        if not existing_role["is_active"]:
+            await db.pool.execute(
+                """UPDATE cleaning_user_roles
+                   SET is_active = true, accepted_at = $1
+                   WHERE id = $2""",
+                now, existing_role["id"],
+            )
+    else:
+        await db.pool.execute(
+            """INSERT INTO cleaning_user_roles
+               (user_id, business_id, role, is_active, accepted_at)
+               VALUES ($1, $2, 'homeowner', true, $3)""",
+            user_id, business_id, now,
+        )
+
+    await invalidate_role_cache(business_id, user_id)
+
+    logger.info(
+        "[accept-client-invite] user %s accepted invite for client %s in business %s",
+        user_id, client_id, business_id,
+    )
+
+    # 5. Issue tokens so the homeowner lands logged in
+    access_token = create_access_token(user_id, email, role=user_role)
+    refresh_token = create_refresh_token(user_id)
+
+    return AcceptClientInviteResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        business_slug=client["business_slug"],
+        business_name=client["business_name"],
+        client_id=client_id,
     )
 
 

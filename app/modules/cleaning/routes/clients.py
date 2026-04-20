@@ -390,12 +390,26 @@ async def api_invite_client(
     if existing_invite:
         raise HTTPException(status_code=409, detail="An invitation for this email already exists")
 
-    # Generate invitation token (stored as metadata)
+    # Generate invitation token and persist it so accept-client-invite can validate.
+    # Expires in 7 days; callers can re-invite to refresh.
+    from datetime import datetime, timedelta, timezone
     invite_token = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=7)
+
+    await db.pool.execute(
+        """UPDATE cleaning_clients
+           SET invite_token = $1::uuid,
+               invite_sent_at = $2,
+               invite_expires_at = $3,
+               updated_at = NOW()
+           WHERE id = $4 AND business_id = $5""",
+        invite_token, now, expires_at, client_id, user["business_id"],
+    )
 
     logger.info(
-        "[INVITE] Client %s (%s) invited to business %s with token %s",
-        client_id, client["email"], user["business_id"], invite_token,
+        "[INVITE] Client %s (%s) invited to business %s with token %s (expires %s)",
+        client_id, client["email"], user["business_id"], invite_token, expires_at.isoformat(),
     )
 
     # Best-effort email send — failure does not block the invite flow
