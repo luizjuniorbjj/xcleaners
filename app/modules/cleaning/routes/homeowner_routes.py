@@ -204,12 +204,16 @@ async def request_booking_route(
         client_id, service["name"], req_date, req_time, business_id, booking_id, service_uuid,
     )
 
-    # Fire-and-forget owner notification
+    # Fire-and-forget dual notifications
     try:
-        from app.modules.cleaning.services.email_service import send_owner_new_booking
+        from app.modules.cleaning.services.email_service import (
+            send_owner_new_booking,
+            send_booking_request_received,
+        )
         await send_owner_new_booking(db, str(booking_id))
+        await send_booking_request_received(db, str(booking_id))
     except Exception:
-        logger.exception("[booking-request] owner email failed for booking %s", booking_id)
+        logger.exception("[booking-request] notification dispatch failed for booking %s", booking_id)
 
     return {
         "booking_id": str(booking_id),
@@ -264,6 +268,27 @@ async def reschedule_route(
     if isinstance(result, dict) and result.get("error"):
         raise HTTPException(status_code=result["status_code"], detail=result["message"])
 
+    # Owner + client notifications — fire-and-forget
+    import logging
+    _elog = logging.getLogger("xcleaners.homeowner")
+    try:
+        from app.modules.cleaning.services.email_service import (
+            send_owner_booking_rescheduled,
+            send_booking_rescheduled,
+        )
+        old_date = result.get("old_date") or ""
+        await send_owner_booking_rescheduled(
+            db, booking_id,
+            old_date=old_date, new_date=body.new_date, new_time=body.new_time,
+            rescheduled_by="client",
+        )
+        await send_booking_rescheduled(
+            db, booking_id,
+            old_date=old_date, new_date=body.new_date, new_time=body.new_time,
+        )
+    except Exception:
+        _elog.exception("reschedule_route: notification dispatch failed for %s", booking_id)
+
     return result
 
 
@@ -289,17 +314,20 @@ async def cancel_route(
     if isinstance(result, dict) and result.get("error"):
         raise HTTPException(status_code=result["status_code"], detail=result["message"])
 
-    # Owner notification — fire-and-forget
+    # Owner + client notifications — fire-and-forget
+    import logging
+    _elog = logging.getLogger("xcleaners.homeowner")
     try:
-        from app.modules.cleaning.services.email_service import send_owner_booking_cancelled
+        from app.modules.cleaning.services.email_service import (
+            send_owner_booking_cancelled,
+            send_booking_cancelled,
+        )
         await send_owner_booking_cancelled(
             db, booking_id, reason=body.reason or "", cancelled_by="client",
         )
+        await send_booking_cancelled(db, booking_id, reason=body.reason or "")
     except Exception:
-        import logging
-        logging.getLogger("xcleaners.homeowner").exception(
-            "cancel_route: owner alert failed for %s", booking_id,
-        )
+        _elog.exception("cancel_route: notification dispatch failed for %s", booking_id)
 
     return result
 

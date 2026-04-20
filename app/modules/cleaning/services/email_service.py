@@ -575,6 +575,181 @@ async def send_owner_booking_cancelled(
     )
 
 
+async def send_booking_rescheduled(
+    db: Database,
+    booking_id: str,
+    old_date: str,
+    new_date: str,
+    new_time: Optional[str] = None,
+) -> dict:
+    """Confirmation email to the client when their booking moves."""
+    booking = await db.pool.fetchrow(
+        """SELECT c.first_name, c.last_name, c.email,
+                  s.name AS service_name
+           FROM cleaning_bookings b
+           JOIN cleaning_clients c ON c.id = b.client_id
+           LEFT JOIN cleaning_services s ON s.id = b.service_id
+           WHERE b.id = $1""",
+        booking_id,
+    )
+    if not booking or not booking["email"]:
+        return {"sent": False, "error": "Booking or client email not found"}
+
+    client_name = f"{booking['first_name'] or ''} {booking['last_name'] or ''}".strip() or "there"
+    svc = booking["service_name"] or "Cleaning"
+    time_html = f" at <strong>{html_escape(new_time)}</strong>" if new_time else ""
+    body = (
+        f"<p>Hi {html_escape(client_name)},</p>"
+        f"<p>Your <strong>{html_escape(svc)}</strong> has been rescheduled:</p>"
+        f"<p>Previously: <strong>{html_escape(old_date)}</strong><br>"
+        f"New: <strong>{html_escape(new_date)}</strong>{time_html}</p>"
+        f"<p>If this isn't right, contact us or adjust it in the app.</p>"
+    )
+    html_body = _template_owner_alert(
+        title="Cleaning rescheduled",
+        body_html=body,
+    )
+    return await send_email(
+        to=booking["email"],
+        subject="Your cleaning has been rescheduled",
+        html_body=html_body,
+        category="booking",
+    )
+
+
+async def send_owner_booking_rescheduled(
+    db: Database,
+    booking_id: str,
+    old_date: str,
+    new_date: str,
+    new_time: Optional[str] = None,
+    rescheduled_by: str = "client",
+) -> dict:
+    """Owner alert: a booking moved."""
+    row = await db.pool.fetchrow(
+        """SELECT b.business_id,
+                  c.first_name, c.last_name
+             FROM cleaning_bookings b
+             JOIN cleaning_clients c ON c.id = b.client_id
+            WHERE b.id = $1""",
+        booking_id,
+    )
+    if not row:
+        return {"sent_count": 0, "failed_count": 0}
+
+    from app.config import APP_URL
+    client_name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip() or "Client"
+    time_html = f" at <strong>{html_escape(new_time)}</strong>" if new_time else ""
+    body = (
+        f"<p><strong>{html_escape(client_name)}</strong> rescheduled their booking.</p>"
+        f"<p>From: <strong>{html_escape(old_date)}</strong> → "
+        f"To: <strong>{html_escape(new_date)}</strong>{time_html}</p>"
+        f"<p><em>Rescheduled by: {html_escape(rescheduled_by)}</em></p>"
+    )
+    return await send_owner_alert(
+        db=db,
+        business_id=str(row["business_id"]),
+        subject=f"📅 Rescheduled: {client_name} — {new_date}",
+        title="Booking rescheduled",
+        body_html=body,
+        cta_link=f"{APP_URL}/bookings",
+        cta_text="View bookings",
+    )
+
+
+async def send_booking_request_received(
+    db: Database,
+    booking_id: str,
+) -> dict:
+    """Confirmation email to the client right after they submit a request."""
+    booking = await db.pool.fetchrow(
+        """SELECT b.scheduled_date, b.scheduled_start,
+                  c.first_name, c.last_name, c.email,
+                  s.name AS service_name,
+                  biz.name AS business_name
+           FROM cleaning_bookings b
+           JOIN cleaning_clients c ON c.id = b.client_id
+           LEFT JOIN cleaning_services s ON s.id = b.service_id
+           JOIN businesses biz ON biz.id = b.business_id
+           WHERE b.id = $1""",
+        booking_id,
+    )
+    if not booking or not booking["email"]:
+        return {"sent": False, "error": "Booking or client email not found"}
+
+    client_name = f"{booking['first_name'] or ''} {booking['last_name'] or ''}".strip() or "there"
+    svc = booking["service_name"] or "Cleaning"
+    biz = booking["business_name"] or "your cleaning company"
+    body = (
+        f"<p>Hi {html_escape(client_name)},</p>"
+        f"<p>We received your request for a <strong>{html_escape(svc)}</strong> "
+        f"on <strong>{booking['scheduled_date']}</strong> at "
+        f"<strong>{str(booking['scheduled_start'])[:5]}</strong>.</p>"
+        f"<p>{html_escape(biz)} will review your request and confirm shortly. "
+        f"You'll get another email once it's confirmed.</p>"
+    )
+    html_body = _template_owner_alert(
+        title="Request received",
+        body_html=body,
+    )
+    return await send_email(
+        to=booking["email"],
+        subject="We got your cleaning request",
+        html_body=html_body,
+        category="booking",
+    )
+
+
+async def send_booking_confirmed(
+    db: Database,
+    booking_id: str,
+) -> dict:
+    """Notify client that owner confirmed their request (draft→scheduled)."""
+    booking = await db.pool.fetchrow(
+        """SELECT b.scheduled_date, b.scheduled_start,
+                  c.first_name, c.last_name, c.email,
+                  s.name AS service_name,
+                  t.name AS team_name,
+                  biz.name AS business_name
+           FROM cleaning_bookings b
+           JOIN cleaning_clients c ON c.id = b.client_id
+           LEFT JOIN cleaning_services s ON s.id = b.service_id
+           LEFT JOIN cleaning_teams t ON t.id = b.team_id
+           JOIN businesses biz ON biz.id = b.business_id
+           WHERE b.id = $1""",
+        booking_id,
+    )
+    if not booking or not booking["email"]:
+        return {"sent": False, "error": "Booking or client email not found"}
+
+    client_name = f"{booking['first_name'] or ''} {booking['last_name'] or ''}".strip() or "there"
+    svc = booking["service_name"] or "Cleaning"
+    biz = booking["business_name"] or "Your cleaning company"
+    team_html = (
+        f"<p>Assigned team: <strong>{html_escape(booking['team_name'])}</strong></p>"
+        if booking["team_name"] else ""
+    )
+    body = (
+        f"<p>Hi {html_escape(client_name)},</p>"
+        f"<p>Good news — {html_escape(biz)} confirmed your cleaning!</p>"
+        f"<p><strong>{html_escape(svc)}</strong><br>"
+        f"Date: <strong>{booking['scheduled_date']}</strong><br>"
+        f"Time: <strong>{str(booking['scheduled_start'])[:5]}</strong></p>"
+        f"{team_html}"
+        f"<p>If anything changes, let us know as soon as possible.</p>"
+    )
+    html_body = _template_owner_alert(
+        title="Cleaning confirmed ✅",
+        body_html=body,
+    )
+    return await send_email(
+        to=booking["email"],
+        subject="Your cleaning is confirmed",
+        html_body=html_body,
+        category="booking",
+    )
+
+
 async def send_invoice_paid_confirmation(
     db: Database,
     invoice_id: str,

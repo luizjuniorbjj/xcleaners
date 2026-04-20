@@ -1124,6 +1124,29 @@ async def patch_booking(
     }
     await on_booking_updated(business_id, booking_info, old_team_id)
 
+    # Client-facing transition emails when status changes
+    old_status = current["status"]
+    new_status = row["status"]
+    if old_status != new_status:
+        try:
+            from app.modules.cleaning.services.email_service import (
+                send_booking_confirmed,
+                send_booking_cancelled,
+            )
+            if old_status == "draft" and new_status == "scheduled":
+                await send_booking_confirmed(db, str(row["id"]))
+            elif new_status == "cancelled" and old_status != "cancelled":
+                await send_booking_cancelled(
+                    db, str(row["id"]),
+                    reason=row.get("cancellation_reason") if hasattr(row, "get") else (row["cancellation_reason"] or ""),
+                )
+        except Exception:
+            import logging
+            logging.getLogger("xcleaners.schedule").exception(
+                "patch_booking: client notify failed for %s (status %s→%s)",
+                booking_id, old_status, new_status,
+            )
+
     return {
         "message": "Booking updated",
         "booking_id": str(row["id"]),
