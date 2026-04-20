@@ -306,7 +306,7 @@ window.Xcleaners = {
     const brand = topNav.querySelector('.cc-top-nav-brand');
     if (brand) {
       brand.innerHTML = `
-        <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:130px;">
+        <img src="/cleaning/static/img/logo.png?v=2" alt="Xcleaners" style="width:130px;">
       `;
     }
 
@@ -490,7 +490,7 @@ window.Xcleaners = {
     authContainer.innerHTML = `
       <div class="cc-auth-card">
         <div class="cc-auth-logo">
-          <img src="/cleaning/static/img/logo.png" alt="Xcleaners" style="width:160px;margin-bottom:12px;">
+          <img src="/cleaning/static/img/logo.png?v=2" alt="Xcleaners" style="width:160px;margin-bottom:12px;">
         </div>
         <h2 class="cc-auth-heading">No cleaning business found</h2>
         <p style="text-align:center;color:var(--cc-neutral-500);margin-bottom:24px;">
