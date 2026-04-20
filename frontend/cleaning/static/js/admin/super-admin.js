@@ -98,7 +98,7 @@ window.AdminSuperAdmin = {
         </div>
 
         <!-- Create Business Modal -->
-        <div class="cc-modal-backdrop" id="sa-create-modal" style="display:none;" onclick="AdminSuperAdmin._closeCreateModal(event)">
+        <div class="cc-modal-backdrop" id="sa-create-modal" onclick="AdminSuperAdmin._closeCreateModal(event)">
           <div class="cc-modal" style="max-width:520px;" onclick="event.stopPropagation()">
             <div class="cc-modal-header">
               <h3 style="margin:0;">Create Business</h3>
@@ -201,7 +201,7 @@ window.AdminSuperAdmin = {
   _openCreateModal() {
     const modal = document.getElementById('sa-create-modal');
     if (modal) {
-      modal.style.display = 'flex';
+      modal.classList.add('cc-visible');
       const nameInput = document.getElementById('sa-biz-name');
       if (nameInput) setTimeout(() => nameInput.focus(), 50);
     }
@@ -209,7 +209,7 @@ window.AdminSuperAdmin = {
 
   _hideCreateModal() {
     const modal = document.getElementById('sa-create-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) modal.classList.remove('cc-visible');
     const form = document.getElementById('sa-create-form');
     if (form) form.reset();
     const err = document.getElementById('sa-create-error');
