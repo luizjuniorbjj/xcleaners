@@ -557,9 +557,13 @@ async def rate_service(
 # ============================================
 
 def _can_reschedule(booking) -> bool:
-    """Check if a booking can be rescheduled."""
+    """Check if a booking can be rescheduled.
+
+    Accepts draft too — homeowner can adjust their pending request
+    before the owner confirms it.
+    """
     status = booking["status"]
-    if status not in ("scheduled", "confirmed", "rescheduled"):
+    if status not in ("draft", "scheduled", "confirmed", "rescheduled"):
         return False
     # Must be at least 24 hours before
     scheduled_date = booking["scheduled_date"]
