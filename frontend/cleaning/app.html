@@ -41,6 +41,27 @@
 }
 </script>
 
+  <!-- One-shot cleanup: unregister any old service worker and wipe its caches.
+       Some clients had a broken SW that pinned 404s for /cleaning/static/img/*.
+       Once everyone has loaded the app at least once after this deploy the
+       entry can be removed. See: commit d25c80e / session 2026-04-20. -->
+  <script>
+    (function(){
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs){
+            regs.forEach(function(r){ try { r.unregister(); } catch(_){} });
+          });
+        }
+        if (typeof caches !== 'undefined' && caches.keys) {
+          caches.keys().then(function(keys){
+            keys.forEach(function(k){ try { caches.delete(k); } catch(_){} });
+          });
+        }
+      } catch(_) { /* ignore */ }
+    })();
+  </script>
+
   <link rel="manifest" href="/cleaning/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/cleaning/static/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/cleaning/static/icons/icon-192.png">
