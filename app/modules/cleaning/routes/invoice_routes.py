@@ -191,10 +191,32 @@ async def send_invoice_route(
     except (ImportError, Exception) as e:
         logger.warning("[INVOICE] Notification send failed: %s", e)
 
+    # Best-effort direct email via Resend — ensures delivery even if
+    # notification_service is not configured. Failure does not block.
+    email_sent = False
+    if payment_url:
+        try:
+            from app.modules.cleaning.services.email_service import send_invoice_email
+            email_result = await send_invoice_email(db, invoice_id, payment_url=payment_url)
+            email_sent = bool(email_result.get("sent"))
+            if email_sent:
+                logger.info(
+                    "[INVOICE] Email delivered for invoice %s via Resend (id=%s)",
+                    invoice_id, email_result.get("id"),
+                )
+            else:
+                logger.warning(
+                    "[INVOICE] Email delivery failed for invoice %s: %s",
+                    invoice_id, email_result.get("error"),
+                )
+        except Exception as e:  # pragma: no cover
+            logger.exception("[INVOICE] Unexpected error sending invoice email %s", invoice_id)
+
     return {
         "message": "Invoice sent",
         "invoice_id": invoice_id,
         "payment_url": payment_url,
+        "email_sent": email_sent,
         "status": result.get("status"),
     }
 

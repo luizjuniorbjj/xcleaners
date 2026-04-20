@@ -398,13 +398,32 @@ async def api_invite_client(
         client_id, client["email"], user["business_id"], invite_token,
     )
 
+    # Best-effort email send — failure does not block the invite flow
+    try:
+        from app.modules.cleaning.services.email_service import send_homeowner_invite
+        email_result = await send_homeowner_invite(db, client_id, invite_token)
+        if email_result.get("sent"):
+            logger.info(
+                "[INVITE] Email delivered to %s via Resend (id=%s)",
+                client["email"], email_result.get("id"),
+            )
+        else:
+            logger.warning(
+                "[INVITE] Email delivery failed for %s: %s",
+                client["email"], email_result.get("error"),
+            )
+    except Exception as e:  # pragma: no cover — email failures never block invitation
+        logger.exception("[INVITE] Unexpected error sending email to %s", client["email"])
+        email_result = {"sent": False, "error": str(e)}
+
     return {
         "status": "invited",
         "client_id": client_id,
         "email": client["email"],
         "invite_token": invite_token,
         "invite_url": f"/cleaning/app#/register/invite/{invite_token}",
-        "message": f"Invitation ready for {client['first_name']} {client['last_name'] or ''}",
+        "email_sent": email_result.get("sent", False),
+        "message": f"Invitation sent to {client['first_name']} {client['last_name'] or ''}".strip(),
     }
 
 

@@ -1,36 +1,64 @@
 """
-Xcleaners v3 — Email Service (Sprint 4).
+Xcleaners v3 — Email Service (Resend provider).
 
-Transactional emails for cleaning businesses via configurable SMTP.
+Transactional emails for cleaning businesses via Resend API.
 Templates: booking_confirmation, booking_reminder, booking_cancelled,
-           invoice_sent, invoice_reminder, team_invite, welcome.
+           invoice_sent, invoice_reminder, team_invite, homeowner_invite, welcome.
 
 All templates use inline CSS for responsive HTML email.
+
+Env vars:
+  RESEND_API_KEY              — Resend API key
+  XCLEANERS_FROM_NOREPLY      — invites, welcome (default: noreply@xcleaners.app)
+  XCLEANERS_FROM_APPOINTMENT  — booking_* emails
+  XCLEANERS_FROM_INVOICE      — invoice_* emails
+  XCLEANERS_FROM_CONTACT      — generic / reply-to
 """
 
 import asyncio
 import html
 import logging
 import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from html import escape as html_escape  # avoid collision with local `html` vars
 from typing import Optional
+
+import resend
 
 from app.database import Database
 
 logger = logging.getLogger("xcleaners.email_service")
 
 # ============================================
-# SMTP CONFIG (from env)
+# RESEND CONFIG (from env)
 # ============================================
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-FROM_EMAIL = os.getenv("XCLEANERS_FROM_EMAIL", "noreply@xcleaners.app")
-FROM_NAME = os.getenv("XCLEANERS_FROM_NAME", "Xcleaners")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+
+FROM_NOREPLY = os.getenv(
+    "XCLEANERS_FROM_NOREPLY", "Xcleaners <noreply@xcleaners.app>"
+)
+FROM_APPOINTMENT = os.getenv(
+    "XCLEANERS_FROM_APPOINTMENT", "Xcleaners Appointments <appointment@xcleaners.app>"
+)
+FROM_INVOICE = os.getenv(
+    "XCLEANERS_FROM_INVOICE", "Xcleaners Invoices <invoice@xcleaners.app>"
+)
+FROM_CONTACT = os.getenv(
+    "XCLEANERS_FROM_CONTACT", "Xcleaners <contact@xcleaners.app>"
+)
+
+# Category → FROM address mapping (semantic sender per email type)
+_FROM_BY_CATEGORY = {
+    "invite": FROM_NOREPLY,      # team_invite, homeowner_invite
+    "booking": FROM_APPOINTMENT, # booking_confirmation/reminder/cancelled
+    "invoice": FROM_INVOICE,     # invoice_sent/reminder/paid
+    "welcome": FROM_NOREPLY,
+    "contact": FROM_CONTACT,
+    "noreply": FROM_NOREPLY,
+}
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 # Xcleaners brand color
 BRAND_BLUE = "#1a73e8"
@@ -41,23 +69,28 @@ BRAND_DARK = "#1557b0"
 # BASE EMAIL SEND
 # ============================================
 
-def _send_smtp(to: str, subject: str, html_body: str, text_body: str) -> None:
+def _send_via_resend(
+    from_addr: str,
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+    reply_to: Optional[str] = None,
+) -> dict:
     """
-    Synchronous SMTP send — runs in a thread executor to avoid blocking the event loop.
-    Raises on any SMTP error so the async caller can handle it.
+    Synchronous Resend send — runs in a thread executor to avoid blocking the event loop.
+    Raises resend.exceptions.ResendError on API failure so the async caller can handle it.
     """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
-    msg["To"] = to
-
-    msg.attach(MIMEText(text_body, "plain"))
-    msg.attach(MIMEText(html_body, "html"))
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(msg)
+    params: dict = {
+        "from": from_addr,
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+        "text": text_body,
+    }
+    if reply_to:
+        params["reply_to"] = reply_to
+    return resend.Emails.send(params)
 
 
 async def send_email(
@@ -65,45 +98,51 @@ async def send_email(
     subject: str,
     html_body: str,
     text_body: Optional[str] = None,
+    category: str = "noreply",
+    reply_to: Optional[str] = None,
 ) -> dict:
     """
-    Send an email via SMTP (non-blocking).
+    Send an email via Resend (non-blocking).
 
     Args:
         to: Recipient email address
         subject: Email subject
         html_body: HTML content
         text_body: Plain text fallback (auto-generated if None)
+        category: One of 'invite', 'booking', 'invoice', 'welcome', 'contact', 'noreply'.
+                  Selects the semantically correct FROM address.
+        reply_to: Optional Reply-To header (defaults to None, replies go to FROM)
 
-    Returns: {sent: bool, error?: str}
+    Returns: {sent: bool, id?: str, error?: str}
     """
-    if not SMTP_HOST or not SMTP_USER:
-        logger.warning("[EMAIL] SMTP not configured (SMTP_HOST or SMTP_USER missing)")
+    if not RESEND_API_KEY:
+        logger.warning("[EMAIL] Resend not configured (RESEND_API_KEY missing)")
         return {"sent": False, "error": "Email not configured"}
 
     if not to:
         return {"sent": False, "error": "No recipient email"}
 
-    # Build plain text fallback before dispatching to thread
+    from_addr = _FROM_BY_CATEGORY.get(category, FROM_NOREPLY)
+
     if not text_body:
         text_body = _strip_html(html_body)
 
     try:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _send_smtp, to, subject, html_body, text_body)
+        result = await loop.run_in_executor(
+            None, _send_via_resend, from_addr, to, subject, html_body, text_body, reply_to,
+        )
+        email_id = result.get("id") if isinstance(result, dict) else None
+        logger.info("[EMAIL] Sent to %s via Resend (id=%s, from=%s, subject=%r)",
+                    to, email_id, from_addr, subject)
+        return {"sent": True, "id": email_id}
 
-        logger.info("[EMAIL] Sent to %s: %s", to, subject)
-        return {"sent": True}
-
-    except smtplib.SMTPAuthenticationError as e:
-        logger.error("[EMAIL] SMTP auth failed: %s", e)
-        return {"sent": False, "error": "SMTP authentication failed"}
-    except smtplib.SMTPException as e:
-        logger.error("[EMAIL] SMTP error sending to %s: %s", to, e)
-        return {"sent": False, "error": f"SMTP error: {str(e)}"}
     except Exception as e:
-        logger.error("[EMAIL] Unexpected error sending to %s: %s", to, e)
-        return {"sent": False, "error": str(e)}
+        # resend SDK raises various exceptions — handle generically to keep
+        # business flows running even if email delivery fails.
+        logger.error("[EMAIL] Resend error sending to %s: %s (%s)",
+                     to, e, type(e).__name__)
+        return {"sent": False, "error": f"{type(e).__name__}: {e}"}
 
 
 # ============================================
@@ -140,6 +179,7 @@ async def send_booking_confirmation(db: Database, booking_id: str) -> dict:
         to=booking["email"],
         subject="Your Booking is Confirmed!",
         html_body=html,
+        category="booking",
     )
 
 
@@ -169,6 +209,7 @@ async def send_booking_reminder(db: Database, booking_id: str) -> dict:
         to=booking["email"],
         subject="Reminder: Your Cleaning is Tomorrow!",
         html_body=html,
+        category="booking",
     )
 
 
@@ -202,11 +243,24 @@ async def send_booking_cancelled(
         to=booking["email"],
         subject="Booking Cancelled",
         html_body=html,
+        category="booking",
     )
 
 
-async def send_invoice_email(db: Database, invoice_id: str) -> dict:
-    """Send invoice email with payment link to the client."""
+async def send_invoice_email(
+    db: Database,
+    invoice_id: str,
+    payment_url: Optional[str] = None,
+) -> dict:
+    """
+    Send invoice email with payment link to the client.
+
+    Args:
+        payment_url: Payment URL from Stripe PaymentLink.create (buy.stripe.com/...).
+                     If provided, used as-is. If omitted, falls back to reconstructing
+                     from stripe_invoice_id (legacy path, may produce invalid links for
+                     Payment Links stored as plink_*).
+    """
     inv = await db.pool.fetchrow(
         """SELECT i.invoice_number, i.total, i.balance_due, i.due_date,
                   i.stripe_invoice_id,
@@ -222,9 +276,9 @@ async def send_invoice_email(db: Database, invoice_id: str) -> dict:
     client_name = f"{inv['first_name'] or ''} {inv['last_name'] or ''}".strip()
     amount = float(inv["balance_due"] or inv["total"] or 0)
 
-    # Build payment link if Stripe reference exists
-    payment_link = ""
-    if inv.get("stripe_invoice_id"):
+    payment_link = payment_url or ""
+    if not payment_link and inv.get("stripe_invoice_id"):
+        # Legacy fallback — only works for `in_*` Stripe Invoice IDs, not `plink_*`
         payment_link = f"https://checkout.stripe.com/pay/{inv['stripe_invoice_id']}"
 
     html = _template_invoice_sent(
@@ -237,6 +291,7 @@ async def send_invoice_email(db: Database, invoice_id: str) -> dict:
         to=inv["email"],
         subject=f"Invoice {inv['invoice_number']} — Payment Due",
         html_body=html,
+        category="invoice",
     )
 
 
@@ -244,8 +299,9 @@ async def send_invoice_reminder(
     db: Database,
     invoice_id: str,
     days_overdue: int = 0,
+    payment_url: Optional[str] = None,
 ) -> dict:
-    """Send overdue invoice reminder to the client."""
+    """Send overdue invoice reminder to the client. See send_invoice_email for payment_url semantics."""
     inv = await db.pool.fetchrow(
         """SELECT i.invoice_number, i.total, i.balance_due, i.due_date,
                   i.stripe_invoice_id,
@@ -261,8 +317,8 @@ async def send_invoice_reminder(
     client_name = f"{inv['first_name'] or ''} {inv['last_name'] or ''}".strip()
     amount = float(inv["balance_due"] or inv["total"] or 0)
 
-    payment_link = ""
-    if inv.get("stripe_invoice_id"):
+    payment_link = payment_url or ""
+    if not payment_link and inv.get("stripe_invoice_id"):
         payment_link = f"https://checkout.stripe.com/pay/{inv['stripe_invoice_id']}"
 
     html = _template_invoice_reminder(
@@ -276,6 +332,55 @@ async def send_invoice_reminder(
         to=inv["email"],
         subject=f"Payment Reminder — Invoice {inv['invoice_number']}",
         html_body=html,
+        category="invoice",
+    )
+
+
+async def send_homeowner_invite(
+    db: Database,
+    client_id: str,
+    invite_token: str,
+) -> dict:
+    """
+    Send homeowner portal invitation email to a client.
+
+    Looks up client + business, builds the register/invite URL, and sends via Resend.
+    Returns {sent, error?} — caller should log but not fail on email errors.
+    """
+    row = await db.pool.fetchrow(
+        """SELECT c.first_name, c.last_name, c.email,
+                  b.name AS business_name
+           FROM cleaning_clients c
+           JOIN businesses b ON b.id = c.business_id
+           WHERE c.id = $1""",
+        client_id,
+    )
+    if not row or not row["email"]:
+        return {"sent": False, "error": "Client or email not found"}
+
+    from app.config import APP_URL
+    accept_link = f"{APP_URL}/cleaning/app#/register/invite/{invite_token}"
+
+    business_name = row["business_name"] or "Your cleaning business"
+    inviter_name = business_name
+    client_name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+    greeting = f"Hi {client_name}," if client_name else "Hello,"
+
+    # Re-use team_invite template (visually matches homeowner portal)
+    html = _template_team_invite(
+        business_name=business_name,
+        inviter_name=inviter_name,
+        role="homeowner",
+        accept_link=accept_link,
+    )
+    # Prepend personalized greeting
+    html = html.replace("<p>You've been invited", f"<p>{greeting}</p><p>You've been invited", 1)
+
+    return await send_email(
+        to=row["email"],
+        subject=f"You're invited to {html_escape(business_name)}'s client portal",
+        html_body=html,
+        category="invite",
     )
 
 
@@ -304,8 +409,9 @@ async def send_team_invite(
     )
     return await send_email(
         to=email,
-        subject=f"You're Invited to Join {html.escape(business_name)} on Xcleaners",
+        subject=f"You're Invited to Join {html_escape(business_name)} on Xcleaners",
         html_body=html,
+        category="invite",
     )
 
 
@@ -337,6 +443,7 @@ async def send_welcome(
         to=user["email"],
         subject="Welcome to Xcleaners!",
         html_body=html,
+        category="welcome",
     )
 
 
