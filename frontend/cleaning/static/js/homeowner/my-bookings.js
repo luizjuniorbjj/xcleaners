@@ -161,6 +161,7 @@ window.HomeownerMyBookings = {
       });
 
       const statusMap = {
+        draft: 'cc-badge-warning',
         confirmed: 'cc-badge-success',
         pending: 'cc-badge-warning',
         completed: 'cc-badge-neutral',
@@ -168,7 +169,17 @@ window.HomeownerMyBookings = {
         in_progress: 'cc-badge-info',
         scheduled: 'cc-badge-primary',
       };
+      const statusLabel = {
+        draft: 'Pending',
+        scheduled: 'Scheduled',
+        confirmed: 'Confirmed',
+        in_progress: 'In progress',
+        completed: 'Completed',
+        cancelled: 'Cancelled',
+        pending: 'Pending',
+      };
       const badgeClass = statusMap[b.status] || 'cc-badge-neutral';
+      const label = statusLabel[b.status] || b.status;
 
       return `
         <div class="cc-card cc-card-interactive cc-animate-slide-up" onclick="window.location.hash='#/homeowner/bookings/${b.id}'"
@@ -194,8 +205,8 @@ window.HomeownerMyBookings = {
 
           <!-- Status & Actions -->
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:var(--cc-space-2);flex-shrink:0;">
-            <span class="cc-badge ${badgeClass}">${b.status}</span>
-            ${b.status === 'scheduled' || b.status === 'confirmed' || b.status === 'pending' ? `
+            <span class="cc-badge ${badgeClass}">${label}</span>
+            ${b.status === 'scheduled' || b.status === 'confirmed' || b.status === 'pending' || b.status === 'draft' ? `
               <div style="display:flex;gap:var(--cc-space-1);" onclick="event.stopPropagation();">
                 <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="HomeownerMyBookings._reschedule('${b.id}')" title="Reschedule">Reschedule</button>
                 <button class="cc-btn cc-btn-xs cc-btn-ghost" style="color:var(--cc-danger-500);" onclick="HomeownerMyBookings._cancel('${b.id}')" title="Cancel">Cancel</button>

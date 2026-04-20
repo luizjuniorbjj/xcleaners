@@ -12,7 +12,7 @@ window.OwnerBookings = {
   _container: null,
   _bookings: [],
   _allBookings: [],
-  _currentTab: 'upcoming',
+  _currentTab: 'pending',  // start on pending so owner sees new requests first
   _filters: { status: 'all', dateFrom: '', dateTo: '', search: '' },
   _sortCol: 'date',
   _sortAsc: true,
@@ -78,8 +78,10 @@ window.OwnerBookings = {
     }
 
     // Tab filter
-    if (this._currentTab === 'upcoming') {
-      list = list.filter(b => b.scheduled_date >= today && b.status !== 'cancelled');
+    if (this._currentTab === 'pending') {
+      list = list.filter(b => b.status === 'draft');
+    } else if (this._currentTab === 'upcoming') {
+      list = list.filter(b => b.scheduled_date >= today && !['cancelled', 'draft'].includes(b.status));
     } else if (this._currentTab === 'past') {
       list = list.filter(b => b.scheduled_date < today || b.status === 'completed');
     } else if (this._currentTab === 'cancelled') {
@@ -108,7 +110,8 @@ window.OwnerBookings = {
     const today = new Date().toISOString().split('T')[0];
     const all = this._allBookings;
     return {
-      upcoming: all.filter(b => b.scheduled_date >= today && b.status !== 'cancelled').length,
+      pending: all.filter(b => b.status === 'draft').length,
+      upcoming: all.filter(b => b.scheduled_date >= today && !['cancelled', 'draft'].includes(b.status)).length,
       past: all.filter(b => b.scheduled_date < today || b.status === 'completed').length,
       cancelled: all.filter(b => b.status === 'cancelled').length,
     };
@@ -134,6 +137,7 @@ window.OwnerBookings = {
             <label class="cc-label cc-text-xs">Status</label>
             <select class="cc-select cc-select-sm" id="ob-filter-status" onchange="OwnerBookings._onFilterChange()">
               <option value="all"${this._filters.status === 'all' ? ' selected' : ''}>All Statuses</option>
+              <option value="draft"${this._filters.status === 'draft' ? ' selected' : ''}>Pending request</option>
               <option value="scheduled"${this._filters.status === 'scheduled' ? ' selected' : ''}>Scheduled</option>
               <option value="in_progress"${this._filters.status === 'in_progress' ? ' selected' : ''}>In Progress</option>
               <option value="completed"${this._filters.status === 'completed' ? ' selected' : ''}>Completed</option>
@@ -157,9 +161,9 @@ window.OwnerBookings = {
 
         <!-- Tabs -->
         <div style="display:flex;gap:var(--cc-space-1);border-bottom:1px solid var(--cc-neutral-200);">
-          ${['upcoming', 'past', 'cancelled'].map(tab => `
+          ${['pending', 'upcoming', 'past', 'cancelled'].map(tab => `
             <button class="cc-btn cc-btn-ghost cc-btn-sm" data-tab="${tab}"
-              style="border-bottom:2px solid ${this._currentTab === tab ? 'var(--cc-primary-500)' : 'transparent'};border-radius:0;${this._currentTab === tab ? 'color:var(--cc-primary-600);font-weight:var(--cc-font-semibold);' : ''}"
+              style="border-bottom:2px solid ${this._currentTab === tab ? 'var(--cc-primary-500)' : 'transparent'};border-radius:0;${this._currentTab === tab ? 'color:var(--cc-primary-600);font-weight:var(--cc-font-semibold);' : ''}${tab === 'pending' && counts.pending > 0 && this._currentTab !== 'pending' ? 'color:var(--cc-warning-600);' : ''}"
               onclick="OwnerBookings._switchTab('${tab}')">
               ${tab.charAt(0).toUpperCase() + tab.slice(1)} (${counts[tab]})
             </button>
@@ -230,7 +234,10 @@ window.OwnerBookings = {
         <td>${statusBadge}</td>
         <td style="text-align:right;">
           <div style="display:flex;gap:var(--cc-space-1);justify-content:flex-end;" onclick="event.stopPropagation();">
-            ${b.status === 'scheduled' ? `
+            ${b.status === 'draft' ? `
+              <button class="cc-btn cc-btn-primary cc-btn-xs" onclick="OwnerBookings._confirmRequest('${b.id}')">Confirm</button>
+              <button class="cc-btn cc-btn-ghost cc-btn-xs cc-text-danger" onclick="OwnerBookings._declineRequest('${b.id}')">Decline</button>
+            ` : b.status === 'scheduled' ? `
               <button class="cc-btn cc-btn-ghost cc-btn-xs cc-text-danger" onclick="OwnerBookings._cancelBooking('${b.id}')">Cancel</button>
             ` : ''}
             <button class="cc-btn cc-btn-ghost cc-btn-xs" onclick="OwnerBookings._showDetail('${b.id}')">View</button>
@@ -242,12 +249,42 @@ window.OwnerBookings = {
 
   _statusBadge(status) {
     const map = {
+      draft: '<span class="cc-badge cc-badge-warning cc-badge-sm">Pending</span>',
       scheduled: '<span class="cc-badge cc-badge-info cc-badge-sm">Scheduled</span>',
       in_progress: '<span class="cc-badge cc-badge-warning cc-badge-sm">In Progress</span>',
       completed: '<span class="cc-badge cc-badge-success cc-badge-sm">Completed</span>',
       cancelled: '<span class="cc-badge cc-badge-danger cc-badge-sm">Cancelled</span>',
     };
     return map[status] || `<span class="cc-badge cc-badge-neutral cc-badge-sm">${status}</span>`;
+  },
+
+  async _confirmRequest(bookingId) {
+    if (!confirm('Confirm this request? The client will be notified.')) return;
+    try {
+      await CleanAPI.cleanPatch(`/bookings/${bookingId}`, { status: 'scheduled' });
+      Xcleaners.showToast('Request confirmed.', 'success');
+      await this._load();
+    } catch (err) {
+      console.error('[Bookings] confirm failed:', err);
+      Xcleaners.showToast((err && err.detail) || 'Could not confirm request.', 'error');
+    }
+  },
+
+  async _declineRequest(bookingId) {
+    const reason = prompt('Reason for declining (optional):', '');
+    if (reason === null) return;
+    try {
+      await CleanAPI.cleanPatch(`/bookings/${bookingId}`, {
+        status: 'cancelled',
+        cancellation_reason: reason || 'Declined by business',
+        cancelled_by: 'business',
+      });
+      Xcleaners.showToast('Request declined.', 'success');
+      await this._load();
+    } catch (err) {
+      console.error('[Bookings] decline failed:', err);
+      Xcleaners.showToast((err && err.detail) || 'Could not decline request.', 'error');
+    }
   },
 
   // ----- Filters & Sorting -----
