@@ -410,7 +410,7 @@ async def _get_owner_notification_emails(
                AND cur.is_active = TRUE
             UNION
             SELECT cm.email
-              FROM cleaning_members cm
+              FROM cleaning_team_members cm
              WHERE cm.business_id = $1
                AND cm.role IN ('lead_cleaner', 'supervisor', 'manager')
                AND cm.status = 'active'
