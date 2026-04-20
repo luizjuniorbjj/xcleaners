@@ -29,6 +29,7 @@ from app.modules.cleaning.models.auth import (
     AcceptClientInviteResponse,
     AcceptInviteRequest,
     AcceptInviteResponse,
+    ClientInviteInfoResponse,
     CleaningRoleInfo,
     InviteRequest,
     InviteResponse,
@@ -341,6 +342,55 @@ async def accept_invite(
         team_name=team_name,
         business_slug=biz["slug"] if biz else slug,
         business_name=biz["name"] if biz else slug,
+    )
+
+
+# ============================================
+# GET /api/v1/clean/invite-info/{token}  (public — no auth required)
+# ============================================
+
+@router.get("/invite-info/{token}", response_model=ClientInviteInfoResponse)
+async def client_invite_info(
+    token: str,
+    db: Database = Depends(get_db),
+):
+    """
+    Public lookup: given an invite UUID, return just enough info to pre-fill
+    the registration form (email + first name + business name). Never exposes
+    user_id or anything sensitive. Used by the invite landing page.
+    """
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    try:
+        token_uuid = _uuid.UUID(token)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid invitation token.")
+
+    row = await db.pool.fetchrow(
+        """SELECT c.email, c.first_name, c.invite_expires_at, c.user_id,
+                  b.name AS business_name
+           FROM cleaning_clients c
+           JOIN businesses b ON b.id = c.business_id
+           WHERE c.invite_token = $1""",
+        token_uuid,
+    )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Invitation not found or already used.")
+
+    if row["user_id"]:
+        raise HTTPException(status_code=409, detail="This invitation has already been accepted.")
+
+    now = datetime.now(timezone.utc)
+    if row["invite_expires_at"] and row["invite_expires_at"] < now:
+        raise HTTPException(status_code=410, detail="This invitation has expired.")
+
+    return ClientInviteInfoResponse(
+        email=row["email"] or "",
+        first_name=row["first_name"],
+        business_name=row["business_name"],
+        expires_at=row["invite_expires_at"].isoformat() if row["invite_expires_at"] else None,
     )
 
 

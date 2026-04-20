@@ -85,6 +85,14 @@ class AcceptClientInviteResponse(BaseModel):
     client_id: str
 
 
+class ClientInviteInfoResponse(BaseModel):
+    """Public: basic info about a pending client invitation, for pre-filling the form."""
+    email: str
+    first_name: Optional[str] = None
+    business_name: str
+    expires_at: Optional[str] = None
+
+
 # ============================================
 # RESPONSE MODELS
 # ============================================

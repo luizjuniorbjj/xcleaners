@@ -541,31 +541,63 @@ window.AuthUI = {
 
   /**
    * Validate invite token
+   *
+   * Two invite systems coexist:
+   *   - Team invites: JWT (has business_slug, email, role in payload)
+   *   - Client (homeowner) invites: UUID — look up via /api/v1/clean/invite-info/{token}
    */
   async _validateInvite(token) {
+    const nameEl = document.getElementById('invite-business-name');
+    const roleEl = document.getElementById('invite-role-text');
+    const emailInput = document.getElementById('reg-email');
+    const nameField = document.getElementById('reg-name');
+    const errorEl = document.getElementById('auth-error');
+
+    // Try JWT first (legacy team invites)
     try {
-      // Decode invite token (JWT) to show business name and role
       const payload = CleanAPI.decodeToken(token);
-      if (payload) {
-        const banner = document.getElementById('invite-banner');
-        const nameEl = document.getElementById('invite-business-name');
-        const roleEl = document.getElementById('invite-role-text');
+      if (payload && (payload.business_slug || payload.business_name)) {
         if (nameEl) nameEl.textContent = payload.business_name || 'a cleaning business';
         if (roleEl) roleEl.textContent = `as a ${payload.role || 'team member'}`;
-
-        // Pre-fill email if in token
-        if (payload.email) {
-          const emailInput = document.getElementById('reg-email');
-          if (emailInput) {
-            emailInput.value = payload.email;
-            emailInput.readOnly = true;
-          }
+        if (payload.email && emailInput) {
+          emailInput.value = payload.email;
+          emailInput.readOnly = true;
+          emailInput.style.backgroundColor = 'var(--cc-neutral-50)';
+          emailInput.style.cursor = 'not-allowed';
         }
+        return;
+      }
+    } catch (_) { /* fall through to UUID lookup */ }
+
+    // Client invite (UUID) — hit the public info endpoint
+    try {
+      const resp = await fetch(`${window.location.origin}/api/v1/clean/invite-info/${encodeURIComponent(token)}`);
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        if (errorEl) {
+          errorEl.textContent = data.detail || 'This invitation is no longer valid.';
+          errorEl.style.display = 'block';
+        }
+        if (nameEl) nameEl.textContent = 'Invitation unavailable';
+        return;
+      }
+      const info = await resp.json();
+      if (nameEl) nameEl.textContent = info.business_name || 'your cleaning business';
+      if (roleEl) roleEl.textContent = 'as a homeowner';
+      if (info.email && emailInput) {
+        emailInput.value = info.email;
+        emailInput.readOnly = true;
+        emailInput.style.backgroundColor = 'var(--cc-neutral-50)';
+        emailInput.style.cursor = 'not-allowed';
+      }
+      if (info.first_name && nameField && !nameField.value) {
+        nameField.value = info.first_name;
       }
     } catch (err) {
-      const errorEl = document.getElementById('auth-error');
-      errorEl.textContent = 'This invitation may have expired. Contact your cleaning company.';
-      errorEl.style.display = 'block';
+      if (errorEl) {
+        errorEl.textContent = 'Could not load invitation details. Please check the link.';
+        errorEl.style.display = 'block';
+      }
     }
   },
 
