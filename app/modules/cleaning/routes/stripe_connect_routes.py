@@ -416,6 +416,64 @@ async def stripe_webhook(request: Request, db: Database = Depends(get_db)):
             )
         return {"received": True, "processed": True, "type": event_type}
 
+    # Smith #24: checkout.session.completed — mark cleaning_invoices as paid
+    # when a Payment Link (one-time invoice charge) is completed. Metadata
+    # (invoice_id, business_id) is set by invoice_service.create_payment_link.
+    # This event is delivered from Connected accounts (since PaymentLink.create
+    # is called with stripe_account=business.stripe_account_id), so the platform
+    # webhook endpoint must have "Listen on connected accounts" enabled.
+    if event_type == "checkout.session.completed":
+        session = event["data"]["object"] or {}
+        metadata = session.get("metadata") or {}
+        invoice_id = metadata.get("invoice_id")
+        business_id = metadata.get("business_id")
+
+        if not invoice_id or not business_id:
+            logger.debug(
+                "stripe_webhook: checkout.session.completed without invoice_id/business_id "
+                "metadata — no-op (session=%s)",
+                session.get("id"),
+            )
+            return {
+                "received": True,
+                "processed": False,
+                "type": event_type,
+                "reason": "no_invoice_metadata",
+            }
+
+        amount_total = (session.get("amount_total") or 0) / 100.0
+        payment_intent_id = session.get("payment_intent") or session.get("id")
+
+        result = await db.pool.execute(
+            """
+            UPDATE cleaning_invoices
+               SET status = 'paid',
+                   amount_paid = total,
+                   payment_method = 'stripe',
+                   payment_reference = $2,
+                   stripe_invoice_id = COALESCE(stripe_invoice_id, $3),
+                   paid_at = COALESCE(paid_at, NOW()),
+                   updated_at = NOW()
+             WHERE id = $1
+               AND business_id = $4
+               AND balance_due > 0
+            """,
+            invoice_id, payment_intent_id, session.get("id"), business_id,
+        )
+        if result == "UPDATE 0":
+            logger.warning(
+                "stripe_webhook: checkout.session.completed for invoice %s "
+                "(business=%s) did not match any row with balance_due>0 — "
+                "already paid or invoice not found",
+                invoice_id, business_id,
+            )
+        else:
+            logger.info(
+                "stripe_webhook: invoice %s marked paid ($%.2f) via session %s",
+                invoice_id, amount_total, session.get("id"),
+            )
+        return {"received": True, "processed": True, "type": event_type}
+
     # Unknown/unhandled event types still return 200 so Stripe doesn't retry
     logger.debug("stripe_webhook: unhandled event type %s", event_type)
     return {"received": True, "processed": False, "type": event_type}
