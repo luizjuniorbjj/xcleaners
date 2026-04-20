@@ -378,19 +378,33 @@ async def create_payment_link(
     business_id: str,
     invoice_id: str,
 ) -> dict:
-    """Create a Stripe payment link for an invoice."""
+    """Create a Stripe payment link for an invoice on the business's Connect account."""
     if not STRIPE_SECRET_KEY:
         return {"error": "Stripe not configured", "status_code": 500}
 
     inv = await db.pool.fetchrow(
-        """SELECT i.*, c.email AS client_email, c.first_name, c.last_name
+        """SELECT i.*, c.email AS client_email, c.first_name, c.last_name,
+                  b.stripe_account_id, b.stripe_charges_enabled
            FROM cleaning_invoices i
            JOIN cleaning_clients c ON c.id = i.client_id
+           JOIN businesses b ON b.id = i.business_id
            WHERE i.id = $1 AND i.business_id = $2""",
         invoice_id, business_id,
     )
     if not inv:
         return {"error": "Invoice not found", "status_code": 404}
+
+    stripe_account_id = inv["stripe_account_id"]
+    if not stripe_account_id:
+        return {
+            "error": "Stripe Connect not configured. Complete onboarding at /settings/payments before sending invoices.",
+            "status_code": 400,
+        }
+    if not inv["stripe_charges_enabled"]:
+        return {
+            "error": "Stripe Connect onboarding incomplete. Finish required fields at /settings/payments to enable charges.",
+            "status_code": 400,
+        }
 
     if inv["status"] in ("paid", "void", "refunded"):
         return {"error": f"Cannot create payment link for {inv['status']} invoice", "status_code": 400}
@@ -400,13 +414,13 @@ async def create_payment_link(
         return {"error": "No balance due", "status_code": 400}
 
     try:
-        # Create a Stripe Price for the exact amount
         price = stripe.Price.create(
-            unit_amount=int(balance * 100),  # cents
+            unit_amount=int(balance * 100),
             currency="usd",
             product_data={
                 "name": f"Invoice {inv['invoice_number']}",
             },
+            stripe_account=stripe_account_id,
         )
 
         payment_link = stripe.PaymentLink.create(
@@ -420,6 +434,7 @@ async def create_payment_link(
                 "type": "redirect",
                 "redirect": {"url": f"{APP_URL}/cleaning/payment-success?invoice={invoice_id}"},
             },
+            stripe_account=stripe_account_id,
         )
 
         # Store Stripe invoice reference
@@ -452,20 +467,34 @@ async def auto_charge(
 ) -> dict:
     """
     Charge a saved card for recurring clients with card on file.
-    Requires the client to have a stripe_customer_id stored.
+    Requires the client to have a stripe_customer_id stored on the Connect account.
     """
     if not STRIPE_SECRET_KEY:
         return {"error": "Stripe not configured", "status_code": 500}
 
     inv = await db.pool.fetchrow(
-        """SELECT i.*, c.email AS client_email
+        """SELECT i.*, c.email AS client_email,
+                  b.stripe_account_id, b.stripe_charges_enabled
            FROM cleaning_invoices i
            JOIN cleaning_clients c ON c.id = i.client_id
+           JOIN businesses b ON b.id = i.business_id
            WHERE i.id = $1 AND i.business_id = $2""",
         invoice_id, business_id,
     )
     if not inv:
         return {"error": "Invoice not found", "status_code": 404}
+
+    stripe_account_id = inv["stripe_account_id"]
+    if not stripe_account_id:
+        return {
+            "error": "Stripe Connect not configured. Complete onboarding at /settings/payments before charging.",
+            "status_code": 400,
+        }
+    if not inv["stripe_charges_enabled"]:
+        return {
+            "error": "Stripe Connect onboarding incomplete. Finish required fields at /settings/payments to enable charges.",
+            "status_code": 400,
+        }
 
     if inv["status"] in ("paid", "void", "refunded"):
         return {"error": f"Cannot charge {inv['status']} invoice", "status_code": 400}
@@ -495,6 +524,7 @@ async def auto_charge(
                 "business_id": business_id,
                 "invoice_number": inv["invoice_number"],
             },
+            stripe_account=stripe_account_id,
         )
 
         if payment_intent.status == "succeeded":
