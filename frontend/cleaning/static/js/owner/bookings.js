@@ -251,9 +251,12 @@ window.OwnerBookings = {
     const map = {
       draft: '<span class="cc-badge cc-badge-warning cc-badge-sm">Pending</span>',
       scheduled: '<span class="cc-badge cc-badge-info cc-badge-sm">Scheduled</span>',
+      rescheduled: '<span class="cc-badge cc-badge-info cc-badge-sm">Rescheduled</span>',
+      confirmed: '<span class="cc-badge cc-badge-success cc-badge-sm">Confirmed</span>',
       in_progress: '<span class="cc-badge cc-badge-warning cc-badge-sm">In Progress</span>',
       completed: '<span class="cc-badge cc-badge-success cc-badge-sm">Completed</span>',
       cancelled: '<span class="cc-badge cc-badge-danger cc-badge-sm">Cancelled</span>',
+      no_show: '<span class="cc-badge cc-badge-danger cc-badge-sm">No Show</span>',
     };
     return map[status] || `<span class="cc-badge cc-badge-neutral cc-badge-sm">${status}</span>`;
   },

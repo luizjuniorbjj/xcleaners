@@ -168,6 +168,8 @@ window.HomeownerMyBookings = {
         cancelled: 'cc-badge-danger',
         in_progress: 'cc-badge-info',
         scheduled: 'cc-badge-primary',
+        rescheduled: 'cc-badge-primary',
+        no_show: 'cc-badge-danger',
       };
       const statusLabel = {
         draft: 'Pending',
@@ -177,6 +179,8 @@ window.HomeownerMyBookings = {
         completed: 'Completed',
         cancelled: 'Cancelled',
         pending: 'Pending',
+        rescheduled: 'Scheduled',  // operationally it's scheduled, just moved
+        no_show: 'No show',
       };
       const badgeClass = statusMap[b.status] || 'cc-badge-neutral';
       const label = statusLabel[b.status] || b.status;
