@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from app.database import Database
+from app.modules.cleaning.services.settings_service import get_cancellation_policy
 
 logger = logging.getLogger("xcleaners.homeowner_service")
 
@@ -44,6 +45,7 @@ async def get_my_bookings(
             b.address_line1, b.city,
             b.quoted_price, b.final_price,
             b.actual_start, b.actual_end,
+            b.reschedule_count,
             s.name AS service_name, s.category AS service_category,
             t.name AS team_name
         FROM cleaning_bookings b
@@ -54,6 +56,11 @@ async def get_my_bookings(
         """,
         business_id, client_id,
     )
+
+    # Policy lookup once — applied to every booking so the client can
+    # render "Reschedule" vs "Already rescheduled" without another round trip.
+    policy = await get_cancellation_policy(db, business_id)
+    max_reschedules = int(policy.get("max_reschedules_per_booking") or 1)
 
     upcoming = []
     past = []
@@ -72,6 +79,8 @@ async def get_my_bookings(
             "address": f"{row['address_line1'] or ''}, {row['city'] or ''}".strip(", "),
             "quoted_price": float(row["quoted_price"]) if row["quoted_price"] else None,
             "final_price": float(row["final_price"]) if row["final_price"] else None,
+            "reschedule_count": int(row["reschedule_count"] or 0),
+            "max_reschedules": max_reschedules,
         }
 
         if row["scheduled_date"] >= today and row["status"] not in ("completed", "cancelled"):
@@ -135,6 +144,15 @@ async def get_booking_detail(
         booking_id, business_id,
     )
 
+    # Policy feeds both the reschedule gate and the late-cancel fee preview.
+    policy = await get_cancellation_policy(db, business_id)
+    max_reschedules = int(policy.get("max_reschedules_per_booking") or 1)
+    fee_percentage = float(policy.get("fee_percentage") or 0)
+    hours_window = int(policy.get("hours_before") or 24)
+    tz_name = policy.get("timezone") or "UTC"
+    reschedule_count = int(row["reschedule_count"] or 0)
+    late, fee_amount = _is_late_cancellation(row, fee_percentage, tz_name, hours_window)
+
     return {
         "id": str(row["id"]),
         "scheduled_date": str(row["scheduled_date"]),
@@ -156,8 +174,12 @@ async def get_booking_detail(
         "quoted_price": float(row["quoted_price"]) if row["quoted_price"] else None,
         "final_price": float(row["final_price"]) if row["final_price"] else None,
         "cancellation_reason": row["cancellation_reason"],
-        "can_reschedule": _can_reschedule(row),
+        "reschedule_count": reschedule_count,
+        "max_reschedules": max_reschedules,
+        "can_reschedule": _can_reschedule(row, max_reschedules, tz_name, hours_window),
         "can_cancel": _can_cancel(row),
+        "late_cancellation": late,
+        "late_cancellation_fee": fee_amount,
         "review": {
             "id": str(review["id"]),
             "rating": review["rating"],
@@ -188,10 +210,17 @@ async def reschedule_booking(
 ) -> dict:
     """
     Reschedule a booking to a new date and optionally a new time.
-    Policy: Must be at least 24 hours before the scheduled date.
+
+    Policy (business-configurable via cancellation_policy):
+      - Must be at least 24h before the scheduled date.
+      - Must not exceed max_reschedules_per_booking (default 1). Past that
+        limit, the homeowner can only cancel.
+
+    Each successful reschedule increments reschedule_count, which the client
+    reads to hide the button once the limit is reached.
     """
     booking = await db.pool.fetchrow(
-        """SELECT id, scheduled_date, scheduled_start, status, team_id
+        """SELECT id, scheduled_date, scheduled_start, status, team_id, reschedule_count
            FROM cleaning_bookings
            WHERE id = $1 AND business_id = $2 AND client_id = $3""",
         booking_id, business_id, client_id,
@@ -200,10 +229,27 @@ async def reschedule_booking(
     if not booking:
         return {"error": True, "status_code": 404, "message": "Booking not found."}
 
-    if not _can_reschedule(booking):
+    policy = await get_cancellation_policy(db, business_id)
+    max_reschedules = int(policy.get("max_reschedules_per_booking") or 1)
+    hours_window = int(policy.get("hours_before") or 24)
+    tz_name = policy.get("timezone") or "UTC"
+    current_count = int(booking["reschedule_count"] or 0)
+
+    if not _can_reschedule(booking, max_reschedules, tz_name, hours_window):
+        # Distinguish "limit reached" from generic refusal so the UI can
+        # surface the right message without extra round trips.
+        if current_count >= max_reschedules:
+            return {
+                "error": True, "status_code": 409,
+                "message": f"Reschedule limit reached ({current_count}/{max_reschedules}). Please cancel if you cannot keep this appointment.",
+                "reason": "limit_reached",
+                "reschedule_count": current_count,
+                "max_reschedules": max_reschedules,
+            }
         return {
             "error": True, "status_code": 409,
-            "message": "This booking cannot be rescheduled. Must be at least 24 hours before the scheduled date and status must be scheduled or confirmed.",
+            "message": f"This booking cannot be rescheduled. Must be at least {hours_window} hours before the scheduled time and status must be scheduled, confirmed, or a pending request.",
+            "reason": "window_or_status",
         }
 
     from datetime import time as _time
@@ -219,18 +265,38 @@ async def reschedule_booking(
             if isinstance(new_time, str) else new_time
         )
 
-    # Update booking
+    # Update booking + bump the counter atomically, with the limit gate
+    # enforced in the WHERE clause itself. RETURNING the new count tells us
+    # whether the write actually happened — if NULL, another concurrent
+    # request consumed the last allowed reschedule between our pre-check
+    # and this statement (double-click, two tabs, etc). Surfaces as 409.
     set_clause = ", ".join(f"{k} = ${i+1}" for i, k in enumerate(update_fields.keys()))
     values = list(update_fields.values())
-    values.extend([booking_id, business_id])
+    values.extend([booking_id, business_id, max_reschedules])
     n = len(update_fields)
 
-    await db.pool.execute(
+    new_count_val = await db.pool.fetchval(
         f"""UPDATE cleaning_bookings
-            SET {set_clause}, status = 'rescheduled', updated_at = NOW()
-            WHERE id = ${n+1} AND business_id = ${n+2}""",
+            SET {set_clause}, status = 'rescheduled',
+                reschedule_count = reschedule_count + 1,
+                updated_at = NOW()
+            WHERE id = ${n+1} AND business_id = ${n+2}
+              AND reschedule_count < ${n+3}
+            RETURNING reschedule_count""",
         *values,
     )
+
+    if new_count_val is None:
+        # Race: concurrent request incremented past the limit between our
+        # pre-check (_can_reschedule) and this UPDATE. No write happened.
+        return {
+            "error": True, "status_code": 409,
+            "message": f"Reschedule limit reached ({max_reschedules}/{max_reschedules}). Please cancel if you cannot keep this appointment.",
+            "reason": "limit_reached_race",
+            "max_reschedules": max_reschedules,
+        }
+
+    new_count = int(new_count_val)
 
     # Publish SSE
     team_id = str(booking["team_id"]) if booking["team_id"] else None
@@ -254,6 +320,9 @@ async def reschedule_booking(
         "new_date": new_date,
         "new_time": new_time,
         "status": "rescheduled",
+        "reschedule_count": new_count,
+        "max_reschedules": max_reschedules,
+        "reschedules_remaining": max(0, max_reschedules - new_count),
     }
 
 
@@ -274,7 +343,8 @@ async def cancel_booking(
     Late cancellations (< 24h) require owner approval (not blocked, but flagged).
     """
     booking = await db.pool.fetchrow(
-        """SELECT b.id, b.scheduled_date, b.status, b.team_id,
+        """SELECT b.id, b.scheduled_date, b.scheduled_start, b.status, b.team_id,
+                  b.quoted_price,
                   c.first_name || ' ' || COALESCE(c.last_name, '') AS client_name
            FROM cleaning_bookings b
            JOIN cleaning_clients c ON c.id = b.client_id
@@ -291,8 +361,16 @@ async def cancel_booking(
             "message": "This booking cannot be cancelled. It may be already completed or in progress.",
         }
 
+    # Fee is computed from the business-configured policy percentage — not
+    # collected here (Stripe automation is a future sprint) but exposed in
+    # the response so the UI can both warn before and confirm after.
+    policy = await get_cancellation_policy(db, business_id)
+    fee_percentage = float(policy.get("fee_percentage") or 0)
+    hours_window = int(policy.get("hours_before") or 24)
+    tz_name = policy.get("timezone") or "UTC"
+    is_late, fee_amount = _is_late_cancellation(booking, fee_percentage, tz_name, hours_window)
+
     now = datetime.now(timezone.utc)
-    is_late = _is_late_cancellation(booking)
 
     await db.pool.execute(
         """UPDATE cleaning_bookings
@@ -319,6 +397,8 @@ async def cancel_booking(
         "booking_id": str(booking_id),
         "status": "cancelled",
         "late_cancellation": is_late,
+        "fee_amount": fee_amount,
+        "fee_percentage": fee_percentage if is_late else 0,
         "cancelled_at": now.isoformat(),
     }
 
@@ -562,20 +642,81 @@ async def rate_service(
 # HELPERS
 # ============================================
 
-def _can_reschedule(booking) -> bool:
+def _hours_until_booking(booking, tz_name: str = "UTC") -> Optional[float]:
+    """Hours from now until booking start, resolved in the business timezone.
+
+    Returns None if scheduled_start is missing (caller decides fallback).
+    Single source of truth for "how close is the booking" — used by
+    _can_reschedule (24h-before gate) and _is_late_cancellation (fee window)
+    so their windows never drift apart.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    from datetime import time as _time
+
+    scheduled_date = booking["scheduled_date"]
+    if isinstance(scheduled_date, str):
+        scheduled_date = date.fromisoformat(scheduled_date)
+
+    try:
+        scheduled_start = booking["scheduled_start"]
+    except (KeyError, TypeError):
+        return None
+
+    if scheduled_start is None:
+        return None
+
+    if isinstance(scheduled_start, str):
+        start_str = scheduled_start if len(scheduled_start) > 5 else scheduled_start + ":00"
+        scheduled_start = _time.fromisoformat(start_str)
+
+    try:
+        tz = ZoneInfo(tz_name) if tz_name else ZoneInfo("UTC")
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+
+    scheduled_dt = datetime.combine(scheduled_date, scheduled_start).replace(tzinfo=tz)
+    now = datetime.now(timezone.utc)
+    return (scheduled_dt - now).total_seconds() / 3600.0
+
+
+def _can_reschedule(
+    booking,
+    max_reschedules: Optional[int] = None,
+    tz_name: str = "UTC",
+    hours_window: int = 24,
+) -> bool:
     """Check if a booking can be rescheduled.
 
-    Accepts draft too — homeowner can adjust their pending request
-    before the owner confirms it.
+    Accepts draft too — homeowner can adjust their pending request before
+    owner confirms it. Bases the window gate on ``_hours_until_booking``
+    (timezone-aware), falling back to date-only comparison only when
+    ``scheduled_start`` is missing from the row. This matches the window
+    logic in ``_is_late_cancellation`` so the two gates never disagree.
     """
     status = booking["status"]
     if status not in ("draft", "scheduled", "confirmed", "rescheduled"):
         return False
-    # Must be at least 24 hours before
-    scheduled_date = booking["scheduled_date"]
-    if isinstance(scheduled_date, str):
-        scheduled_date = date.fromisoformat(scheduled_date)
-    return (scheduled_date - date.today()).days >= 1
+
+    hours_until = _hours_until_booking(booking, tz_name)
+    if hours_until is not None:
+        if hours_until < float(hours_window):
+            return False
+    else:
+        # Fallback only when scheduled_start is NULL in the row
+        scheduled_date = booking["scheduled_date"]
+        if isinstance(scheduled_date, str):
+            scheduled_date = date.fromisoformat(scheduled_date)
+        if (scheduled_date - date.today()).days < 1:
+            return False
+
+    if max_reschedules is not None:
+        try:
+            current = int(booking["reschedule_count"] or 0)
+        except (KeyError, TypeError):
+            current = 0
+        if current >= max_reschedules:
+            return False
+    return True
 
 
 def _can_cancel(booking) -> bool:
@@ -584,9 +725,42 @@ def _can_cancel(booking) -> bool:
     return status in ("scheduled", "confirmed", "rescheduled", "draft")
 
 
-def _is_late_cancellation(booking) -> bool:
-    """Check if cancellation is within 24 hours of scheduled date."""
-    scheduled_date = booking["scheduled_date"]
-    if isinstance(scheduled_date, str):
-        scheduled_date = date.fromisoformat(scheduled_date)
-    return (scheduled_date - date.today()).days < 1
+def _is_late_cancellation(
+    booking,
+    fee_percentage: float = 0,
+    tz_name: str = "UTC",
+    hours_window: int = 24,
+) -> tuple[bool, float]:
+    """Return ``(is_late, fee_amount)`` for a cancellation.
+
+    Late = booking start is within ``hours_window`` hours from now in the
+    business timezone. Uses ``_hours_until_booking`` — one source of truth
+    with ``_can_reschedule`` so the two gates cannot drift apart.
+
+    Fee rule: ``quoted_price * fee_percentage / 100`` rounded to cents when
+    late, priced, and not a draft (drafts await owner approval — no fee).
+    """
+    hours_until = _hours_until_booking(booking, tz_name)
+    if hours_until is not None:
+        is_late = hours_until < float(hours_window)
+    else:
+        scheduled_date = booking["scheduled_date"]
+        if isinstance(scheduled_date, str):
+            scheduled_date = date.fromisoformat(scheduled_date)
+        is_late = (scheduled_date - date.today()).days < 1
+
+    try:
+        status = booking["status"]
+    except (KeyError, TypeError):
+        status = None
+
+    fee_amount = 0.0
+    if is_late and fee_percentage and status != "draft":
+        try:
+            price = booking["quoted_price"]
+        except (KeyError, TypeError):
+            price = None
+        if price:
+            fee_amount = round(float(price) * float(fee_percentage) / 100.0, 2)
+
+    return is_late, fee_amount

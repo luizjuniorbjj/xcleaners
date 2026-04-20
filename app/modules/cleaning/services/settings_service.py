@@ -35,6 +35,7 @@ DEFAULT_SETTINGS = {
         "hours_before": 24,
         "fee_percentage": 50,
         "max_reschedules_per_month": 2,
+        "max_reschedules_per_booking": 1,
     },
     "travel_buffer_minutes": 30,
     "auto_generate_schedule": False,
@@ -107,6 +108,39 @@ async def get_business_settings(db: Database, business_id: str) -> dict:
         "plan": row["plan"],
         "status": row["status"],
     }
+
+
+# ============================================
+# CANCELLATION POLICY (fast read — booking flow)
+# ============================================
+
+async def get_cancellation_policy(db: Database, business_id: str) -> dict:
+    """
+    Return the cancellation_policy block merged with defaults, plus the
+    business timezone under the key ``timezone`` so callers computing the
+    cancellation window (which depends on local booking time) can resolve
+    without a second round trip.
+
+    Defaults to ``UTC`` when the business has no timezone configured.
+    Always returns a populated dict — defaults cover any missing keys.
+    """
+    row = await db.pool.fetchrow(
+        "SELECT cleaning_settings, timezone FROM businesses WHERE id = $1",
+        business_id,
+    )
+
+    stored = {}
+    if row and row["cleaning_settings"]:
+        cs = row["cleaning_settings"]
+        if isinstance(cs, str):
+            stored = json.loads(cs)
+        else:
+            stored = dict(cs)
+
+    policy = dict(DEFAULT_SETTINGS["cancellation_policy"])
+    policy.update(stored.get("cancellation_policy") or {})
+    policy["timezone"] = (row["timezone"] if row else None) or "UTC"
+    return policy
 
 
 # ============================================
