@@ -105,12 +105,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[REDIS] Not available: {e}")
 
+    # APScheduler — AI Turbo Bloco 2.2 (daily_schedule + 24h_reminders + draft_ttl)
+    try:
+        from app.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.warning(f"[SCHED] Startup failed (graceful degrade, no jobs): {e}")
+
     logger.info("[OK] Xcleaners API ready")
     logger.info("=" * 40)
     logger.info(f"  http://localhost:{XCLEANERS_PORT}")
     logger.info(f"  http://localhost:{XCLEANERS_PORT}/docs")
 
     yield
+
+    # Graceful shutdown — APScheduler first so jobs in flight finalize
+    try:
+        from app.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        logger.warning(f"[SCHED] Shutdown issue: {e}")
 
     await close_redis()
     await close_db()
