@@ -190,6 +190,53 @@ export async function cleanupAllE2EBookings(): Promise<number> {
   return res.rowCount || 0;
 }
 
+/** Delete any invoices referencing a test booking (cleanup after invoice specs). */
+export async function deleteInvoicesForBooking(bookingId: string): Promise<number> {
+  const bizId = await getE2EBusinessId();
+  // Delete line items first (FK constraint)
+  await pool.query(
+    `DELETE FROM cleaning_invoice_items
+       WHERE invoice_id IN (
+         SELECT id FROM cleaning_invoices
+          WHERE booking_id = $1 AND business_id = $2
+       )`,
+    [bookingId, bizId]
+  );
+  const res = await pool.query(
+    "DELETE FROM cleaning_invoices WHERE booking_id = $1 AND business_id = $2",
+    [bookingId, bizId]
+  );
+  return res.rowCount || 0;
+}
+
+/** Read invoice status + total by id — used to verify mark-paid side effects. */
+export async function getInvoiceStatus(invoiceId: string): Promise<{ status: string; total: number; amount_paid: number } | null> {
+  const bizId = await getE2EBusinessId();
+  const res = await pool.query<{ status: string; total: string; amount_paid: string }>(
+    `SELECT status, total::text, COALESCE(amount_paid, 0)::text AS amount_paid
+       FROM cleaning_invoices WHERE id = $1 AND business_id = $2`,
+    [invoiceId, bizId]
+  );
+  if (res.rows.length === 0) return null;
+  return {
+    status: res.rows[0].status,
+    total: parseFloat(res.rows[0].total),
+    amount_paid: parseFloat(res.rows[0].amount_paid),
+  };
+}
+
+/** Compute live LTV for a client (same SQL used by listing post-fix). */
+export async function getClientLiveLTV(clientId: string): Promise<number> {
+  const bizId = await getE2EBusinessId();
+  const res = await pool.query<{ v: string }>(
+    `SELECT COALESCE(SUM(total) FILTER (WHERE status = 'paid'), 0)::text AS v
+       FROM cleaning_invoices
+       WHERE client_id = $1 AND business_id = $2`,
+    [clientId, bizId]
+  );
+  return parseFloat(res.rows[0]?.v || '0');
+}
+
 /** Ensure test homeowner has a cleaning_client row + a default team for bookings. */
 export async function ensureHomeownerClientLink(email: string): Promise<string> {
   const bizId = await getE2EBusinessId();

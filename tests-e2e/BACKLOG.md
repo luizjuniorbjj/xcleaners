@@ -4,6 +4,28 @@ Items that manual + automated validation surfaced. Not blockers for 3sisters cut
 
 ## MEDIUM
 
+### M3 — Late-cancel fee is DISPLAY ONLY — no debit/invoice persisted ⚠️ REVENUE LEAK
+- **Where:** `POST /my-bookings/{id}/cancel` → backend returns `fee_amount: $X` in response and UI shows red banner
+- **Actual behaviour:** NO row is created anywhere (no invoice, no ledger, no debit). Owner NEVER sees a collection trail.
+- **Comment in code confirms intentional deferral:** `homeowner_service.py:365-366` — "Stripe automation is a future sprint"
+- **Impact for 3sisters cutover:** cliente cancela dentro de 24h, UI mostra "$100 fee", cliente não paga, owner sem registro pra cobrar → **REVENUE LEAK DIRETO**
+- **Spec documenting gap:** `tests/regression/financial/late-cancel-fee-persistence.spec.ts` (3/3 PASS — assertions pinning current state; last test flips to `expect(1)` once fee persistence ships)
+- **Fix size:** medium (~2-3h): auto-create draft invoice with line item `"Late cancellation fee — {booking#}"` when `is_late=true`; send to Stripe via existing payment link flow
+- **Priority:** **HIGH** — avaliar antes de 3sisters cutover real com cliente pagante
+
+### L5 — 4 policy-mvp specs are time-sensitive flaky (day-of-clock dependent)
+- **Where:** `cancel-late-fee.spec.ts`, `draft-no-fee.spec.ts`, `policy-edit-reactive.spec.ts`
+- **Bug:** `beforeEach` seeds a booking with `scheduledDate = now + 12h (UTC)` and `scheduledStart = currentHour:30`. When combined with business tz America/Chicago (UTC-5/6), the resulting `hours_until_booking` varies between ~12h and ~30h depending on what UTC hour the test runs
+- **Symptom:** 4 specs PASS in the morning (UTC), FAIL in the afternoon (UTC > 24h → not late → no banner)
+- **Not a system bug, not a regression.** Isolated by running non-time-sensitive specs: 33/33 PASS
+- **Fix size:** small (~15min): seed with deterministic `scheduledStart = new Date(Date.now() + 6*3600*1000)` across tz
+- **Impact:** CI noisy, but Policy MVP FEATURE works (cancel-late-fee.spec passed 2x earlier today, same prod backend)
+
+### ~~M4 — `POST /invoices/{id}/mark-paid` returns 500 Internal Server Error~~ ✅ FIXED 2026-04-21 (commit d95ceb0)
+- **Root cause:** `asyncpg.AmbiguousParameterError` — param `$4` (new_status) used in both `SET status = $4` and `CASE WHEN $4 = 'paid'`, driver can't deduce single type
+- **Fix:** cast `$4::varchar` explicitly in both contexts (invoice_service.py:359-368)
+- **Detection:** `tests/regression/financial/invoice-mark-paid.spec.ts` caught it. Manual payments (cash/check/zelle/venmo) were ALL failing silently with 500 before today
+
 ### ~~M1 — Dashboard KPIs show $0/0/0 despite real data~~ ✅ FIXED 2026-04-21 (commit 87380a8)
 - **Root cause:** frontend checked legacy field `today_bookings_count` that backend renamed to object `bookings_today` → always fell into zero fallback
 - **Fix:** validate object non-empty instead of legacy field key (dashboard.js:132)
