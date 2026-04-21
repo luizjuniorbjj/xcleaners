@@ -141,6 +141,58 @@ Tanto `/ai/chat` quanto `/whatsapp/webhook` chamam o helper.
 
 ---
 
+## Added 2026-04-21 — webchat público extension
+
+### MEDIUM-7 · Lead notifier email/SMS pro owner quando lead captured
+
+**Origem:** webchat público Bloco extensão. Visitante anônimo conversa -> IA
+cria lead via `capture_lead`. Owner só vê se abrir dashboard — sem notificação
+ativa. Clawtobusiness tem `lead_notifier.py` que envia email + SMS pro owner.
+
+**Arquivos:** portar `app/modules/channels/lead_notifier.py` + wire no
+`_capture_lead` handler pra fire-and-forget após INSERT.
+
+**Effort:** 1-2h
+
+### MEDIUM-8 · `validate_service_area` tool
+
+**Origem:** system prompt `scheduling_public_visitor.py` menciona a tool,
+mas ela não existe ainda. IA pode pedir zip e usar conhecimento próprio —
+menos preciso.
+
+**Fix:** criar tool que consulta `cleaning_areas.zip_codes[]` do business e
+retorna covered/nearby/outside.
+
+**Effort:** 1-2h
+
+### LOW-10 · HTML embed snippet pro webchat público
+
+**Origem:** widget `ai-demo-chat.js` existe mas owner não tem exemplo de
+como incluir no site do business.
+
+**Fix:** criar `docs/guides/embed-chat-widget.md` com snippet copy-paste.
+
+**Effort:** 30min
+
+### LOW-11 · Bot protection / captcha no webchat público
+
+**Origem:** atualmente só rate limit por IP (10/60s). Atacante rotating IPs
+pode floodar leads spam.
+
+**Fix:** integrar hCaptcha/Cloudflare Turnstile no widget ou honeypot field.
+
+**Effort:** 2-3h
+
+### LOW-12 · Telegram canal
+
+**Origem:** explicitamente descartado do sprint AI Turbo pela escolha do
+Luiz (Opção 2 só webchat público). Clawtobusiness tem `telegram.py`
+(185 linhas) + `telegram_webhook.py` prontos pra portar.
+
+**Effort:** 1-2h (portagem direta)
+
+---
+
 ## LOW — polish, entra em sprints futuros conforme demanda
 
 ### LOW-1 · `_compute_end` overnight overflow

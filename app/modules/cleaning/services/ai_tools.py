@@ -253,6 +253,52 @@ AI_TOOLS = [
         },
     },
     {
+        "name": "capture_lead",
+        "description": (
+            "Save a lead (prospective customer inquiry) with contact info and "
+            "service request details. Use this in PUBLIC VISITOR chat ONLY "
+            "(visitor is anonymous, no account yet). After collecting at minimum "
+            "name + phone, call this tool to persist the lead. The owner will "
+            "review and contact them. ALWAYS include the returned Lead ID in your "
+            "response text (format: 'Lead ID: <uuid>') so UI can show confirmation. "
+            "Do NOT use in authenticated customer chats — those should use "
+            "propose_booking_draft instead."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "first_name": {"type": "string", "description": "Visitor first name"},
+                "last_name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string", "description": "REQUIRED — must be collected before calling"},
+                "zip_code": {"type": "string"},
+                "service_requested": {
+                    "type": "string",
+                    "description": "e.g. 'deep clean', 'move-out', 'recurring weekly'",
+                },
+                "bedrooms": {"type": "integer"},
+                "bathrooms": {"type": "number"},
+                "preferred_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD or free text like 'next Tuesday'",
+                },
+                "preferred_time": {
+                    "type": "string",
+                    "description": "morning | afternoon | evening | specific time",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Free-form notes or context from conversation",
+                },
+                "estimated_quote": {
+                    "type": "number",
+                    "description": "If IA calculated via get_price_quote earlier",
+                },
+            },
+            "required": ["phone"],
+        },
+    },
+    {
         "name": "propose_booking_draft",
         "description": (
             "Create a booking in 'draft' status — AI proposal pending owner "
@@ -867,6 +913,101 @@ async def _get_services_catalog(
     }
 
 
+# ─── capture_lead (AI Turbo Webchat Publico 2026-04-21) ──────────────────
+
+async def _capture_lead(
+    params: dict, business_id: str, db: Database
+) -> dict:
+    """
+    Cria cleaning_leads row com info coletada pelo IA no chat publico.
+    NAO cria booking direto — owner revisa manualmente via admin UI.
+
+    Busca match com cleaning_clients.phone (normalized) pra preencher
+    client_id se cliente ja existir (lead de cliente existente tambem
+    e util pra tracking de engagement).
+    """
+    phone = (params.get("phone") or "").strip()
+    if not phone:
+        return {
+            "error": "phone_required",
+            "message": "Cannot save lead without phone number",
+        }
+
+    # Normalize phone (strip non-digits) for dedup match
+    phone_normalized = "".join(c for c in phone if c.isdigit())
+
+    # Match existing client by normalized phone (same business scope)
+    existing_client = await db.pool.fetchrow(
+        """
+        SELECT id FROM cleaning_clients
+        WHERE business_id = $1
+          AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = $2
+        LIMIT 1
+        """,
+        business_id, phone_normalized,
+    )
+    client_id = existing_client["id"] if existing_client else None
+
+    try:
+        lead = await db.pool.fetchrow(
+            """
+            INSERT INTO cleaning_leads (
+                business_id, client_id,
+                first_name, last_name, email, phone,
+                zip_code, service_requested, bedrooms, bathrooms,
+                preferred_date, preferred_time, message, estimated_quote,
+                source
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                $11::date, $12, $13, $14, 'ai_chat'
+            )
+            RETURNING id
+            """,
+            business_id,
+            client_id,
+            params.get("first_name"),
+            params.get("last_name"),
+            params.get("email"),
+            phone,
+            params.get("zip_code"),
+            params.get("service_requested"),
+            params.get("bedrooms"),
+            params.get("bathrooms"),
+            # preferred_date as DATE: try ISO parse, else NULL (free text goes to message)
+            _parse_iso_date(params.get("preferred_date")),
+            params.get("preferred_time"),
+            params.get("message"),
+            params.get("estimated_quote"),
+        )
+    except Exception as e:
+        logger.error("[AI_TOOLS] capture_lead insert failed: %s", e)
+        return {"error": "lead_create_failed", "message": str(e)}
+
+    lead_id = str(lead["id"])
+    logger.info(
+        "[AI_TOOLS] Lead captured: %s business=%s matched_client=%s",
+        lead_id, business_id, bool(client_id),
+    )
+
+    return {
+        "success": True,
+        "lead_id": lead_id,
+        "matched_existing_client": bool(client_id),
+        "message": f"Lead ID: {lead_id} — tell visitor business will contact soon.",
+    }
+
+
+def _parse_iso_date(value):
+    """Parse YYYY-MM-DD or return None (IA might send free text)."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        from datetime import date as _date
+        return _date.fromisoformat(value[:10])
+    except (ValueError, TypeError):
+        return None
+
+
 # ─── propose_booking_draft ────────────────────
 
 async def _propose_booking_draft(
@@ -980,4 +1121,6 @@ TOOL_HANDLERS = {
     "get_price_quote": _get_price_quote,
     "get_services_catalog": _get_services_catalog,
     "propose_booking_draft": _propose_booking_draft,
+    # AI Turbo Webchat Publico 2026-04-21: lead capture pra visitante anonimo
+    "capture_lead": _capture_lead,
 }
