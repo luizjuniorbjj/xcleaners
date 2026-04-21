@@ -63,7 +63,18 @@
 
 ## Próximo passo imediato
 
-Executar `npm install` em `tests-e2e/` + instalar browsers Playwright. Depois começar fixtures.
+**ENTREGA CONCLUÍDA.** Próxima sessão começa lendo `REPORT-2026-04-21.md`. Para ligar as 10 specs Policy MVP que ainda falham em UI timing:
+
+1. Abrir qualquer spec em `tests/regression/policy-mvp/*.spec.ts`
+2. Após `createTestBooking`, adicionar:
+   ```ts
+   await page.waitForTimeout(1000);
+   await homeownerPage.reload();
+   await page.waitForLoadState('networkidle');
+   ```
+3. Re-rodar `npx playwright test` até green
+
+OU converter assertions UI-only em API+UI mix usando `ApiClient` em `helpers/api-client.ts`.
 
 ## Rule do reload de contexto (diretriz Luiz 2026-04-20)
 
