@@ -49,6 +49,8 @@ from app.modules.cleaning.routes.notification_routes import router as cleaning_n
 from app.modules.cleaning.routes.dashboard_routes import router as cleaning_dashboard_router
 from app.modules.cleaning.routes.settings_routes import router as cleaning_settings_router
 from app.modules.cleaning.routes.ai_routes import router as cleaning_ai_router
+# AI Turbo Bloco 2.3: WhatsApp Evolution API webhook
+from app.modules.cleaning.routes.whatsapp_routes import router as cleaning_whatsapp_router
 from app.modules.cleaning.routes.auth_routes import router as cleaning_auth_router
 from app.modules.cleaning.routes.plan import router as cleaning_plan_router
 from app.modules.cleaning.routes.push_routes import router as cleaning_push_router
@@ -211,6 +213,7 @@ app.include_router(cleaning_notification_router)
 app.include_router(cleaning_dashboard_router)
 app.include_router(cleaning_settings_router)
 app.include_router(cleaning_ai_router)
+app.include_router(cleaning_whatsapp_router)
 app.include_router(cleaning_auth_router)
 app.include_router(cleaning_plan_router)
 app.include_router(cleaning_push_router)
