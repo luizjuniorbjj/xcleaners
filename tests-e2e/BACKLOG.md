@@ -4,14 +4,11 @@ Items that manual + automated validation surfaced. Not blockers for 3sisters cut
 
 ## MEDIUM
 
-### M3 — Late-cancel fee is DISPLAY ONLY — no debit/invoice persisted ⚠️ REVENUE LEAK
-- **Where:** `POST /my-bookings/{id}/cancel` → backend returns `fee_amount: $X` in response and UI shows red banner
-- **Actual behaviour:** NO row is created anywhere (no invoice, no ledger, no debit). Owner NEVER sees a collection trail.
-- **Comment in code confirms intentional deferral:** `homeowner_service.py:365-366` — "Stripe automation is a future sprint"
-- **Impact for 3sisters cutover:** cliente cancela dentro de 24h, UI mostra "$100 fee", cliente não paga, owner sem registro pra cobrar → **REVENUE LEAK DIRETO**
-- **Spec documenting gap:** `tests/regression/financial/late-cancel-fee-persistence.spec.ts` (3/3 PASS — assertions pinning current state; last test flips to `expect(1)` once fee persistence ships)
-- **Fix size:** medium (~2-3h): auto-create draft invoice with line item `"Late cancellation fee — {booking#}"` when `is_late=true`; send to Stripe via existing payment link flow
-- **Priority:** **HIGH** — avaliar antes de 3sisters cutover real com cliente pagante
+### ~~M5 — Late-cancel fee is DISPLAY ONLY — no debit/invoice persisted~~ ✅ FIXED 2026-04-21 (commit f17b0d5)
+- **Before:** `POST /my-bookings/{id}/cancel` returned `fee_amount` and UI showed banner, but NO DB record was created → revenue leak (owner had no collection trail)
+- **Fix:** `cancel_booking` now auto-creates a draft invoice via `_create_late_cancel_fee_invoice` when `is_late=true`. Invoice carries `booking_id` link, line item `"Late cancellation fee — booking {date}#{id[:8]}"`, 7-day due date. Best-effort (invoice failure logs warning but does NOT block cancel).
+- **Response now includes:** `fee_invoice_id` + `fee_invoice_number` for UI linking
+- **Test coverage:** `late-cancel-fee-persistence.spec.ts` (4/4 PASS — response fields, booking state, invoice+item persistence, owner /invoices visibility)
 
 ### L5 — 4 policy-mvp specs are time-sensitive flaky (day-of-clock dependent)
 - **Where:** `cancel-late-fee.spec.ts`, `draft-no-fee.spec.ts`, `policy-edit-reactive.spec.ts`
