@@ -83,6 +83,7 @@
     "hours_before": "Aviso minimo (horas)",
     "fee_percentage": "Taxa de cancelamento tardio (%)",
     "max_reschedules": "Reagendamentos max/mes",
+    "max_reschedules_per_booking": "Remarcacoes max por agendamento",
     "travel_buffer": "Tempo de deslocamento (minutos)",
     "auto_schedule": "Gerar agenda automaticamente",
     "auto_schedule_time": "Horario de geracao",

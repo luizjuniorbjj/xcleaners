@@ -83,6 +83,7 @@
     "hours_before": "Minimum notice (hours)",
     "fee_percentage": "Late cancel fee (%)",
     "max_reschedules": "Max reschedules/month",
+    "max_reschedules_per_booking": "Max reschedules per booking",
     "travel_buffer": "Travel buffer (minutes)",
     "auto_schedule": "Auto-generate daily schedule",
     "auto_schedule_time": "Generation time",

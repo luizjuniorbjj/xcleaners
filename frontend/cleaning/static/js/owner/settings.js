@@ -262,15 +262,18 @@ window.OwnerSettings = {
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--cc-space-3);">
             <div class="cc-form-group">
               <label class="cc-label">${t('settings.hours_before')}</label>
-              <input type="number" name="cancel_hours" value="${s.cancellation_policy?.hours_before || 24}" min="0" max="168" class="cc-input" />
+              <input type="number" name="cancel_hours" value="${s.cancellation_policy?.hours_before ?? 24}" min="1" max="168" step="1" class="cc-input" />
+              <small class="cc-text-muted" style="display:block;margin-top:4px;font-size:var(--cc-text-xs);">Clients must cancel or reschedule at least this many hours before the scheduled time.</small>
             </div>
             <div class="cc-form-group">
               <label class="cc-label">${t('settings.fee_percentage')}</label>
-              <input type="number" name="cancel_fee" value="${s.cancellation_policy?.fee_percentage || 50}" min="0" max="100" class="cc-input" />
+              <input type="number" name="cancel_fee" value="${s.cancellation_policy?.fee_percentage ?? 50}" min="0" max="100" step="5" class="cc-input" />
+              <small class="cc-text-muted" style="display:block;margin-top:4px;font-size:var(--cc-text-xs);">Percentage of booking price charged for late cancellations. Set to 0 to disable.</small>
             </div>
             <div class="cc-form-group">
-              <label class="cc-label">${t('settings.max_reschedules')}</label>
-              <input type="number" name="max_reschedules" value="${s.cancellation_policy?.max_reschedules_per_month || 2}" min="0" max="10" class="cc-input" />
+              <label class="cc-label">${t('settings.max_reschedules_per_booking')}</label>
+              <input type="number" name="max_reschedules_per_booking" value="${s.cancellation_policy?.max_reschedules_per_booking ?? 1}" min="1" max="10" step="1" class="cc-input" />
+              <small class="cc-text-muted" style="display:block;margin-top:4px;font-size:var(--cc-text-xs);">How many times a client can reschedule the same booking before they can only cancel.</small>
             </div>
           </div>
         </div>
@@ -357,11 +360,19 @@ window.OwnerSettings = {
       zip_code: fd.get('zip_code'),
       timezone: fd.get('timezone'),
       business_hours: businessHours,
-      cancellation_policy: {
-        hours_before: parseInt(fd.get('cancel_hours')) || 24,
-        fee_percentage: parseInt(fd.get('cancel_fee')) || 50,
-        max_reschedules_per_month: parseInt(fd.get('max_reschedules')) || 2,
-      },
+      cancellation_policy: (() => {
+        // Local range validation — clamp to sane bounds so the homeowner
+        // UX can't be bricked by a typo like max=0 (would freeze reschedule
+        // for every client) or fee=999 (nonsense charge).
+        const hoursRaw = parseInt(fd.get('cancel_hours'), 10);
+        const feeRaw = parseInt(fd.get('cancel_fee'), 10);
+        const maxRaw = parseInt(fd.get('max_reschedules_per_booking'), 10);
+        return {
+          hours_before: Number.isFinite(hoursRaw) ? Math.min(168, Math.max(1, hoursRaw)) : 24,
+          fee_percentage: Number.isFinite(feeRaw) ? Math.min(100, Math.max(0, feeRaw)) : 50,
+          max_reschedules_per_booking: Number.isFinite(maxRaw) ? Math.min(10, Math.max(1, maxRaw)) : 1,
+        };
+      })(),
       travel_buffer_minutes: parseInt(fd.get('travel_buffer')) || 30,
       default_service_duration: parseInt(fd.get('default_duration')) || 120,
       auto_generate_schedule: !!fd.get('auto_gen'),
