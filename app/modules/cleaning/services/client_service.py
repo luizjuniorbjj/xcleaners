@@ -409,13 +409,22 @@ async def list_clients(
         "last_name": "c.last_name",
         "email": "c.email",
         "status": "c.status",
-        "lifetime_value": "c.lifetime_value",
+        "lifetime_value": "ltv.v",
         "total_bookings": "c.total_bookings",
         "last_service_date": "c.last_service_date",
         "created_at": "c.created_at",
     }
     sort_col = allowed_sorts.get(sort_by, "c.last_name")
     sort_dir = "DESC" if sort_order.lower() == "desc" else "ASC"
+
+    # LTV is aggregated live from paid invoices — c.lifetime_value is stale (never updated by billing flow).
+    ltv_join = """
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(total) FILTER (WHERE status = 'paid'), 0) AS v
+            FROM cleaning_invoices
+            WHERE client_id = c.id AND business_id = c.business_id
+        ) ltv ON TRUE
+    """
 
     # Count
     count_sql = f"""
@@ -430,8 +439,9 @@ async def list_clients(
     # Fetch
     offset = (page - 1) * per_page
     fetch_sql = f"""
-        SELECT DISTINCT c.*
+        SELECT DISTINCT c.*, ltv.v AS computed_ltv
         FROM cleaning_clients c
+        {ltv_join}
         {frequency_join}
         {team_join}
         WHERE {where_clause}
@@ -443,6 +453,8 @@ async def list_clients(
     clients = []
     for row in rows:
         client = _row_to_dict(row)
+        if "computed_ltv" in client and client["computed_ltv"] is not None:
+            client["lifetime_value"] = float(client.pop("computed_ltv"))
         # Get active schedule count
         sched_count = await db.pool.fetchval(
             "SELECT COUNT(*) FROM cleaning_client_schedules WHERE client_id = $1 AND business_id = $2 AND status = 'active'",
