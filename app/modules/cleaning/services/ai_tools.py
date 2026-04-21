@@ -325,11 +325,18 @@ AI_TOOLS = [
 # TOOL EXECUTORS
 # ============================================
 
+# Tools that receive auth_context for ownership enforcement.
+# Add tool name here when a handler needs authenticated_client_id or similar
+# to block intra-business spoofing via prompt injection.
+TOOLS_REQUIRING_AUTH_CONTEXT = {"propose_booking_draft"}
+
+
 async def execute_tool(
     tool_name: str,
     tool_input: dict,
     business_id: str,
     db: Database,
+    auth_context: Optional[dict] = None,
 ) -> str:
     """
     Execute a tool call and return the result as a JSON string.
@@ -339,6 +346,10 @@ async def execute_tool(
         tool_input: Input parameters for the tool.
         business_id: UUID of the business (scope).
         db: Database instance.
+        auth_context: Optional dict with authenticated context (e.g.
+            {"authenticated_client_id": "<uuid>"}). Passed only to handlers
+            listed in TOOLS_REQUIRING_AUTH_CONTEXT — used to block spoofing
+            of ids that should match the authenticated caller.
 
     Returns:
         JSON string with the tool result.
@@ -350,7 +361,10 @@ async def execute_tool(
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
     try:
-        result = await handler(tool_input, business_id, db)
+        if tool_name in TOOLS_REQUIRING_AUTH_CONTEXT:
+            result = await handler(tool_input, business_id, db, auth_context=auth_context)
+        else:
+            result = await handler(tool_input, business_id, db)
         return json.dumps(result, default=str)
     except Exception as e:
         logger.error("[AI_TOOLS] Error executing %s: %s", tool_name, e)
@@ -856,8 +870,49 @@ async def _get_services_catalog(
 # ─── propose_booking_draft ────────────────────
 
 async def _propose_booking_draft(
-    params: dict, business_id: str, db: Database
+    params: dict,
+    business_id: str,
+    db: Database,
+    auth_context: Optional[dict] = None,
 ) -> dict:
+    # CRITICAL fix (Smith verify 2026-04-20 C-1):
+    # Dois gates de ownership antes de qualquer INSERT — sem isso a IA pode
+    # ser manipulada via prompt injection pra criar drafts em nome de outro
+    # cliente (cross-business OU intra-business).
+
+    # Gate 1 — cross-business: client_id deve pertencer a este business.
+    client_check = await db.pool.fetchrow(
+        """
+        SELECT id FROM cleaning_clients
+        WHERE id = $1 AND business_id = $2 AND status != 'blocked'
+        """,
+        params["client_id"], business_id,
+    )
+    if not client_check:
+        logger.warning(
+            "[AI_TOOLS] propose_booking_draft REJECTED (cross-business): "
+            "client_id=%s not owned by business_id=%s",
+            params["client_id"], business_id,
+        )
+        return {
+            "error": "client_not_authorized",
+            "message": "This customer is not registered with this business.",
+        }
+
+    # Gate 2 — intra-business: se temos authenticated_client_id, deve bater
+    # com o client_id do tool_input. Bloqueia spoofing dentro do mesmo business.
+    if auth_context and auth_context.get("authenticated_client_id"):
+        if str(params["client_id"]) != str(auth_context["authenticated_client_id"]):
+            logger.warning(
+                "[AI_TOOLS] propose_booking_draft REJECTED (spoofing): "
+                "auth=%s tool_input=%s",
+                auth_context["authenticated_client_id"], params["client_id"],
+            )
+            return {
+                "error": "client_mismatch",
+                "message": "You can only book services for your own account.",
+            }
+
     # Defense-in-depth: re-check availability before INSERT
     # (race-safe real via advisory lock fica para backlog pos-sprint)
     avail = await is_slot_available(

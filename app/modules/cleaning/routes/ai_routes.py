@@ -28,6 +28,7 @@ from app.modules.cleaning.middleware.role_guard import require_role
 from app.moderation_service import get_moderation_service
 from app.rate_limiter import rate_limiter
 from app.prompts.scheduling_customer import SCHEDULING_CUSTOMER_SYSTEM_PROMPT
+from app.config import GATES_FAIL_CLOSED
 
 logger = logging.getLogger("xcleaners.ai_routes")
 
@@ -243,7 +244,7 @@ async def ai_chat(
     user_id = user["user_id"]
     message = body.message.strip()
 
-    # 1. Moderation
+    # 1. Moderation (HIGH fix Smith H-1 2026-04-20: fail-closed em producao)
     try:
         moderation = get_moderation_service()
         mod = await moderation.check(message)
@@ -255,9 +256,15 @@ async def ai_chat(
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("[ai/chat] moderation error (continuing): %s", e)
+        logger.exception("[ai/chat] moderation gate failed: %s", e)
+        if GATES_FAIL_CLOSED:
+            raise HTTPException(
+                status_code=503,
+                detail="Content safety service temporarily unavailable. Please try again shortly.",
+            )
+        # fail-open (dev/staging): log e continua
 
-    # 2. Rate limit (30/60s per user)
+    # 2. Rate limit 30/60s per user (HIGH fix Smith H-1: fail-closed em producao)
     try:
         allowed = await rate_limiter.is_allowed(
             f"chat:{user_id}", max_requests=30, window_seconds=60,
@@ -270,7 +277,13 @@ async def ai_chat(
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning("[ai/chat] rate_limit error (continuing): %s", e)
+        logger.exception("[ai/chat] rate_limit gate failed: %s", e)
+        if GATES_FAIL_CLOSED:
+            raise HTTPException(
+                status_code=503,
+                detail="Rate limiting service temporarily unavailable. Please try again shortly.",
+            )
+        # fail-open (dev/staging): log e continua
 
     # 3. Resolve client
     client = await db.pool.fetchrow(
@@ -289,11 +302,22 @@ async def ai_chat(
         )
 
     # 4. Load or create conversation
+    # MEDIUM fix Smith M-3: conversation reuse exige client_id ativo no business.
+    # Bloqueia usuario multi-business cruzar conversas entre tenants.
     conv_id: Optional[str] = body.conversation_id
     if conv_id:
         row = await db.pool.fetchrow(
-            "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
-            conv_id, user_id,
+            """
+            SELECT c.id FROM conversations c
+            WHERE c.id = $1 AND c.user_id = $2
+              AND EXISTS (
+                  SELECT 1 FROM cleaning_clients cc
+                  WHERE cc.user_id = c.user_id
+                    AND cc.business_id = $3
+                    AND cc.status != 'blocked'
+              )
+            """,
+            conv_id, user_id, business_id,
         )
         if not row:
             raise HTTPException(status_code=404, detail="Conversation not found.")
@@ -356,15 +380,20 @@ async def ai_chat(
         _run_anthropic_tools,
     )
     from app.config import AI_MODEL_PRIMARY
+
+    # CRITICAL fix Smith C-1 2026-04-20: auth_context enforcing ownership
+    # no handler propose_booking_draft — bloqueia client_id spoofing via prompt.
+    auth_context = {"authenticated_client_id": str(client["id"])}
+
     try:
         ai_client, provider = _get_ai_client()
         if provider == "anthropic":
             response_text = await _run_anthropic_tools(
-                ai_client, system_prompt, message, business_id, db,
+                ai_client, system_prompt, message, business_id, db, auth_context,
             )
         else:
             response_text = await _run_openai_tools(
-                ai_client, system_prompt, message, business_id, db, provider,
+                ai_client, system_prompt, message, business_id, db, provider, auth_context,
             )
     except Exception as e:
         logger.exception("[ai/chat] AI tool loop error: %s", e)

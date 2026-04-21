@@ -106,20 +106,27 @@ async def _run_ai_with_tools(
     user_message: str,
     business_id: str,
     db: Database,
+    auth_context: Optional[dict] = None,
 ) -> str:
     """
     Run the AI with tool_use support. Handles the tool call loop.
 
     Supports both Anthropic (native tool_use) and OpenAI/proxy (function calling).
 
+    Args:
+        auth_context: Optional authenticated context (e.g.
+            {"authenticated_client_id": "<uuid>"}) forwarded to tools that
+            need ownership enforcement (see ai_tools.TOOLS_REQUIRING_AUTH_CONTEXT).
+            Legacy callers (owner-facing optimize_schedule etc.) pass None.
+
     Returns the final text response from the AI.
     """
     client, provider = _get_ai_client()
 
     if provider == "anthropic":
-        return await _run_anthropic_tools(client, system_prompt, user_message, business_id, db)
+        return await _run_anthropic_tools(client, system_prompt, user_message, business_id, db, auth_context)
     else:
-        return await _run_openai_tools(client, system_prompt, user_message, business_id, db, provider)
+        return await _run_openai_tools(client, system_prompt, user_message, business_id, db, provider, auth_context)
 
 
 async def _run_anthropic_tools(
@@ -128,6 +135,7 @@ async def _run_anthropic_tools(
     user_message: str,
     business_id: str,
     db: Database,
+    auth_context: Optional[dict] = None,
 ) -> str:
     """Run tool loop using Anthropic's native tool_use."""
     messages = [{"role": "user", "content": user_message}]
@@ -163,7 +171,7 @@ async def _run_anthropic_tools(
                     block.name,
                     json.dumps(block.input)[:200],
                 )
-                result = await execute_tool(block.name, block.input, business_id, db)
+                result = await execute_tool(block.name, block.input, business_id, db, auth_context)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -189,6 +197,7 @@ async def _run_openai_tools(
     business_id: str,
     db: Database,
     provider: str,
+    auth_context: Optional[dict] = None,
 ) -> str:
     """Run tool loop using OpenAI function calling (works for proxy too)."""
     # FIX 2026-04-20: remover hardcoded gpt-4o-mini — usar AI_MODEL_PRIMARY do config
@@ -233,7 +242,7 @@ async def _run_openai_tools(
             except json.JSONDecodeError:
                 args = {}
 
-            result = await execute_tool(func.name, args, business_id, db)
+            result = await execute_tool(func.name, args, business_id, db, auth_context)
 
             messages.append({
                 "role": "tool",

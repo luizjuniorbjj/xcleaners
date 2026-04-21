@@ -71,6 +71,11 @@ MAX_CONTEXT_TOKENS = 4000
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "true").lower() == "true"
 MODERATION_MODEL = os.getenv("MODERATION_MODEL", "omni-moderation-latest")
 
+# Security gates fail policy: when True, failures in moderation / rate-limit
+# reject the request (503). When False, log and continue (fail-open).
+# Default True (safe for production). Disable only in dev local without Redis/OpenAI.
+GATES_FAIL_CLOSED = os.getenv("GATES_FAIL_CLOSED", "true").lower() == "true"
+
 # ============================================
 # STRIPE (H-6 fix: no hardcoded price IDs)
 # ============================================
