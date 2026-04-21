@@ -11,10 +11,19 @@ The execute_tool() function dispatches tool calls to the correct handler.
 
 import logging
 from datetime import date, datetime
-from typing import Optional
+from decimal import Decimal
+from typing import Any, Optional
+from uuid import UUID
 
 from app.database import Database
 from app.modules.cleaning.services.team_assignment_scorer import haversine
+# AI Turbo Sprint 2026-04-20: imports para tools novas (booking flow cliente)
+from app.modules.cleaning.services.pricing_engine import (
+    calculate_booking_price,
+    PricingConfigError,
+)
+from app.modules.cleaning.services.booking_service import create_booking_with_pricing
+from app.modules.cleaning.services.availability_service import is_slot_available
 
 logger = logging.getLogger("xcleaners.ai_tools")
 
@@ -135,6 +144,178 @@ AI_TOOLS = [
                 },
             },
             "required": [],
+        },
+    },
+    # ============================================
+    # AI Turbo Sprint 2026-04-20 — tools para chat customer (booking flow)
+    # ============================================
+    {
+        "name": "check_availability",
+        "description": (
+            "Check if a specific date/time slot is available for booking. "
+            "Returns whether the slot has any overlapping booking or travel "
+            "buffer violation. Use BEFORE proposing a booking to the customer. "
+            "Never commit to a time without calling this first."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scheduled_date": {
+                    "type": "string",
+                    "description": "Target date in YYYY-MM-DD format.",
+                },
+                "scheduled_start": {
+                    "type": "string",
+                    "description": "Target start time in HH:MM format (24h).",
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "description": "Expected duration in minutes. Default 120.",
+                },
+                "team_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional UUID of a specific team to check. "
+                        "If omitted, checks any team in the business."
+                    ),
+                },
+                "client_zip": {
+                    "type": "string",
+                    "description": "Optional customer ZIP code for travel-buffer awareness.",
+                },
+            },
+            "required": ["scheduled_date", "scheduled_start"],
+        },
+    },
+    {
+        "name": "get_price_quote",
+        "description": (
+            "Compute an authoritative price quote for a cleaning booking. "
+            "Uses the server-side pricing engine (formula + override + extras "
+            "+ frequency discount + tax). NEVER estimate prices yourself — "
+            "always call this tool. The returned price is exactly what will "
+            "be charged if booked."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service_id": {
+                    "type": "string",
+                    "description": "UUID of the cleaning_services row.",
+                },
+                "tier": {
+                    "type": "string",
+                    "enum": ["basic", "deep", "premium"],
+                    "description": "Service tier. Default 'basic'.",
+                },
+                "extras": {
+                    "type": "array",
+                    "description": "List of add-ons selected by the customer.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "extra_id": {"type": "string"},
+                            "qty": {"type": "integer", "default": 1},
+                        },
+                        "required": ["extra_id"],
+                    },
+                },
+                "frequency_id": {
+                    "type": "string",
+                    "description": "Optional UUID of cleaning_frequencies for recurring discount.",
+                },
+                "location_id": {
+                    "type": "string",
+                    "description": "Optional UUID of cleaning_areas for location-specific formula + tax.",
+                },
+                "scheduled_date": {
+                    "type": "string",
+                    "description": (
+                        "Service date in YYYY-MM-DD for historical tax lookup "
+                        "(F-001 correctness)."
+                    ),
+                },
+            },
+            "required": ["service_id", "tier"],
+        },
+    },
+    {
+        "name": "get_services_catalog",
+        "description": (
+            "Fetch the business's active services catalog: services, extras, "
+            "and frequencies available for booking. Use to show the customer "
+            "what they can book and what add-ons exist."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "propose_booking_draft",
+        "description": (
+            "Create a booking in 'draft' status — AI proposal pending owner "
+            "approval. The draft carries the authoritative price snapshot and "
+            "appears in the owner's Pending tab. ONLY call after: "
+            "(1) check_availability returns available=true, "
+            "(2) get_price_quote returns an acceptable total, "
+            "(3) customer confirmed the booking details in conversation. "
+            "Returns the draft booking_id — tell the customer it's awaiting confirmation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "description": "UUID of cleaning_clients (the logged-in customer).",
+                },
+                "service_id": {
+                    "type": "string",
+                    "description": "UUID of cleaning_services.",
+                },
+                "scheduled_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD.",
+                },
+                "scheduled_start": {
+                    "type": "string",
+                    "description": "HH:MM (24h).",
+                },
+                "tier": {
+                    "type": "string",
+                    "enum": ["basic", "deep", "premium"],
+                    "description": "Tier matching the quote shown to customer.",
+                },
+                "extras": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "extra_id": {"type": "string"},
+                            "qty": {"type": "integer", "default": 1},
+                        },
+                        "required": ["extra_id"],
+                    },
+                },
+                "frequency_id": {
+                    "type": "string",
+                    "description": "Optional — for recurring discount.",
+                },
+                "location_id": {
+                    "type": "string",
+                    "description": "Optional — for location-specific formula + tax.",
+                },
+                "duration_minutes": {
+                    "type": "integer",
+                    "description": "Expected duration. Default 120.",
+                },
+                "special_instructions": {
+                    "type": "string",
+                    "description": "Free-text notes from the customer.",
+                },
+            },
+            "required": ["client_id", "service_id", "scheduled_date", "scheduled_start", "tier"],
         },
     },
 ]
@@ -547,6 +728,187 @@ async def _get_cancellation_patterns(
     }
 
 
+# ─── check_availability (AI Turbo Sprint 2026-04-20) ──────────────────
+
+async def _check_availability(
+    params: dict, business_id: str, db: Database
+) -> dict:
+    return await is_slot_available(
+        db,
+        business_id=business_id,
+        scheduled_date=params["scheduled_date"],
+        scheduled_start=params["scheduled_start"],
+        duration_minutes=params.get("duration_minutes"),
+        team_id=params.get("team_id"),
+        client_zip=params.get("client_zip"),
+    )
+
+
+# ─── get_price_quote ────────────────────
+
+async def _get_price_quote(
+    params: dict, business_id: str, db: Database
+) -> dict:
+    try:
+        breakdown = await calculate_booking_price(
+            business_id=UUID(business_id) if isinstance(business_id, str) else business_id,
+            service_id=UUID(params["service_id"]),
+            tier=params.get("tier", "basic"),
+            extras=params.get("extras", []),
+            frequency_id=UUID(params["frequency_id"]) if params.get("frequency_id") else None,
+            location_id=UUID(params["location_id"]) if params.get("location_id") else None,
+            scheduled_date=params.get("scheduled_date"),
+            db=db,
+        )
+        return {
+            "final_amount": float(breakdown["final_amount"]),
+            "subtotal": float(breakdown["subtotal"]),
+            "subtotal_service": float(breakdown["subtotal_service"]),
+            "extras_sum": float(breakdown["extras_sum"]),
+            "discount_amount": float(breakdown["discount_amount"]),
+            "discount_pct": float(breakdown["discount_pct"]),
+            "tax_amount": float(breakdown["tax_amount"]),
+            "tax_pct": float(breakdown["tax_pct"]),
+            "tier": breakdown["tier"],
+            "tier_multiplier": float(breakdown["tier_multiplier"]),
+            "override_applied": breakdown["override_applied"],
+            "extras": [
+                {"name": e["name"], "qty": e["qty"], "price": float(e["price"])}
+                for e in breakdown.get("extras", [])
+            ],
+            "frequency_name": breakdown.get("frequency_name"),
+        }
+    except PricingConfigError as e:
+        return {"error": "pricing_config", "message": str(e)}
+
+
+# ─── get_services_catalog ────────────────────
+
+async def _get_services_catalog(
+    params: dict, business_id: str, db: Database
+) -> dict:
+    services = await db.pool.fetch(
+        """
+        SELECT id, name, slug, description, category, tier,
+               bedrooms, bathrooms, estimated_duration_minutes, base_price, icon
+        FROM cleaning_services
+        WHERE business_id = $1 AND is_active = TRUE
+        ORDER BY sort_order, name
+        """,
+        business_id,
+    )
+    extras = await db.pool.fetch(
+        """
+        SELECT id, name, price
+        FROM cleaning_extras
+        WHERE business_id = $1 AND is_active = TRUE
+        ORDER BY sort_order, name
+        """,
+        business_id,
+    )
+    frequencies = await db.pool.fetch(
+        """
+        SELECT id, name, interval_weeks, discount_pct, is_default
+        FROM cleaning_frequencies
+        WHERE business_id = $1 AND is_archived = FALSE
+        ORDER BY COALESCE(interval_weeks, 0), name
+        """,
+        business_id,
+    )
+
+    return {
+        "services": [
+            {
+                "service_id": str(s["id"]),
+                "name": s["name"],
+                "description": s["description"],
+                "category": s["category"],
+                "tier": s["tier"],
+                "bedrooms": s["bedrooms"],
+                "bathrooms": s["bathrooms"],
+                "estimated_duration_minutes": s["estimated_duration_minutes"],
+                "base_price": float(s["base_price"]) if s["base_price"] else None,
+                "icon": s["icon"],
+            }
+            for s in services
+        ],
+        "extras": [
+            {
+                "extra_id": str(e["id"]),
+                "name": e["name"],
+                "price": float(e["price"]),
+            }
+            for e in extras
+        ],
+        "frequencies": [
+            {
+                "frequency_id": str(f["id"]),
+                "name": f["name"],
+                "interval_weeks": f["interval_weeks"],
+                "discount_pct": float(f["discount_pct"]),
+                "is_default": f["is_default"],
+            }
+            for f in frequencies
+        ],
+    }
+
+
+# ─── propose_booking_draft ────────────────────
+
+async def _propose_booking_draft(
+    params: dict, business_id: str, db: Database
+) -> dict:
+    # Defense-in-depth: re-check availability before INSERT
+    # (race-safe real via advisory lock fica para backlog pos-sprint)
+    avail = await is_slot_available(
+        db,
+        business_id=business_id,
+        scheduled_date=params["scheduled_date"],
+        scheduled_start=params["scheduled_start"],
+        duration_minutes=params.get("duration_minutes"),
+    )
+    if not avail["available"]:
+        return {
+            "error": "slot_unavailable",
+            "message": "The requested slot is no longer available.",
+            "conflicts": avail["conflicts"],
+        }
+
+    try:
+        result = await create_booking_with_pricing(
+            db,
+            business_id=business_id,
+            client_id=params["client_id"],
+            service_id=params["service_id"],
+            scheduled_date=params["scheduled_date"],
+            scheduled_start=params["scheduled_start"],
+            estimated_duration_minutes=params.get("duration_minutes"),
+            tier=params.get("tier", "basic"),
+            extras=params.get("extras", []),
+            frequency_id=params.get("frequency_id"),
+            location_id=params.get("location_id"),
+            source="ai_chat",
+            status="draft",
+            special_instructions=params.get("special_instructions"),
+        )
+        breakdown = result["breakdown"]
+        return {
+            "success": True,
+            "booking_id": result["booking_id"],
+            "status": "draft",
+            "scheduled_date": params["scheduled_date"],
+            "scheduled_start": params["scheduled_start"],
+            "final_amount": float(breakdown["final_amount"]),
+            "extras_count": result["extras_written"],
+            "message": "Draft created — pending owner approval.",
+        }
+    except PricingConfigError as e:
+        return {"error": "pricing_config", "message": str(e)}
+    except Exception as e:
+        logger.error("[AI_TOOLS] propose_booking_draft error: %s", e)
+        return {"error": "draft_create_failed", "message": str(e)}
+
+
 # ============================================
 # HANDLER REGISTRY
 # ============================================
@@ -558,4 +920,9 @@ TOOL_HANDLERS = {
     "calculate_distance": _calculate_distance,
     "get_team_workload_summary": _get_team_workload_summary,
     "get_cancellation_patterns": _get_cancellation_patterns,
+    # AI Turbo Sprint 2026-04-20: tools limpas, schema atual
+    "check_availability": _check_availability,
+    "get_price_quote": _get_price_quote,
+    "get_services_catalog": _get_services_catalog,
+    "propose_booking_draft": _propose_booking_draft,
 }
