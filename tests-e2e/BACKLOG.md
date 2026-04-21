@@ -4,21 +4,16 @@ Items that manual + automated validation surfaced. Not blockers for 3sisters cut
 
 ## MEDIUM
 
-### M1 — Dashboard KPIs show $0/0/0 despite real data
-- **Where:** `/dashboard` — Revenue This Month, Bookings Today, Active Clients, Overdue Invoices
-- **Expected:** reflect aggregation over `business_id` current user owns
-- **Actual:** all zeros, while Schedule/Reports aggregate correctly
-- **Root cause hypothesis:** KPI query likely missing `WHERE business_id = $1` OR using UTC `CURRENT_DATE` instead of business timezone for "today"
-- **Fix size:** small (1-2 query fixes)
-- **Test coverage:** `tests/negative/dashboard-kpis-nonzero.spec.ts` (TODO add)
+### ~~M1 — Dashboard KPIs show $0/0/0 despite real data~~ ✅ FIXED 2026-04-21 (commit 87380a8)
+- **Root cause:** frontend checked legacy field `today_bookings_count` that backend renamed to object `bookings_today` → always fell into zero fallback
+- **Fix:** validate object non-empty instead of legacy field key (dashboard.js:132)
 
-### M2 — Reports page renders MOCK/hardcoded data
+### M2 — Reports page renders MOCK/hardcoded data (DEFERRED — not cutover blocker)
 - **Where:** `/reports` — "Michael Williams", 63 jobs this month, $9,922 revenue, Team Alpha 16h
-- **Expected:** aggregate real DB data filtered by business_id
-- **Actual:** fake demo data displayed regardless of real state
-- **Root cause hypothesis:** page never wired to real API; UI shows stubs
-- **Fix size:** medium (full page rewrite — connect to aggregation endpoints)
-- **Test coverage:** asserted via negative spec comparing displayed vs DB-queried totals
+- **Root cause confirmed 2026-04-21:** `reports.js` generates ALL data client-side via `Math.random()` + hardcoded names; no backend endpoint exists
+- **Fix size:** medium-large (~3-4h): create `GET /reports/summary` endpoint with aggregations (revenue by week, jobs by day, top clients by paid invoices, team performance) + rewrite `reports.js` to consume API
+- **Why deferred:** not in critical path for cutover; page is obviously demo; can ship as Sprint N+1 with real aggregations
+- **Test coverage:** `tests/negative/reports-not-mock.spec.ts` (TODO add when wired to real API)
 
 ### M3 — Wave 2 dead branch in reschedule error parsing
 - **Where:** `frontend/cleaning/static/js/homeowner/my-bookings.js` `_submitReschedule`
@@ -36,11 +31,9 @@ Items that manual + automated validation surfaced. Not blockers for 3sisters cut
 - **Fix:** add 301 redirect in router, or rename sidebar target
 - **Impact:** users who bookmark deep links
 
-### L2 — LTV=$0 in Clients table
-- **Where:** `/clients` column "LTV"
-- **Expected:** sum of paid invoices per client
-- **Actual:** all $0
-- **Fix:** join `cleaning_invoices` where `status='paid'` and sum `total`
+### ~~L2 — LTV=$0 in Clients table~~ ✅ FIXED 2026-04-21 (commit 9195580)
+- **Root cause:** listing read `c.lifetime_value` (stale column never updated by billing flow); detail endpoint already aggregated correctly
+- **Fix:** LEFT JOIN LATERAL with `SUM(total) FILTER (WHERE status='paid')` from cleaning_invoices; sort-by-lifetime_value uses live value too (client_service.py:412)
 
 ### L3 — Ghost setting `max_reschedules_per_month` still in JSONB
 - **Where:** `cleaning_settings.cancellation_policy.max_reschedules_per_month` persists in businesses that saved under old UI
