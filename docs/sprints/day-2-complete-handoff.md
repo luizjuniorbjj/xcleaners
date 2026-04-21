@@ -83,26 +83,20 @@ Descoberta crítica durante pre-flight:
 
 ### 3 opções para você escolher
 
-#### Opção 1 — Criar environment `staging` no Railway (RECOMENDADA, ~15 min)
+#### Opção 1 — Criar environment `staging` no Railway (RECOMENDADA, ~5 min agora)
 ```bash
 cd C:\xcleaners
 railway environment new staging
-railway environment staging        # link CLI ao env staging
-# Setar env vars específicas de staging
-railway variables set AI_PROVIDER=openai
-railway variables set OPENAI_API_KEY=<sua-key>
-railway variables set AI_MODEL_PRIMARY=gpt-4.1-mini
-railway variables set MODERATION_ENABLED=true
-railway variables set GATES_FAIL_CLOSED=true
-railway variables set EVOLUTION_API_URL=http://204.168.134.70:8443
-railway variables set EVOLUTION_API_KEY=<sua-key>
-railway variables set EVOLUTION_INSTANCE_NAME=xcleaners
-railway variables set EVOLUTION_WEBHOOK_SECRET=$(openssl rand -hex 32)
+railway environment staging             # link CLI ao env staging
+# Env vars ja estao no production — copiar pro staging
+railway variables --environment staging --set-from-environment production
 # Deploy
 railway up --environment staging
 ```
 
 Vantagens: testa tudo sem risco em prod. Pode iterar à vontade. Depois de validado via `docs/qa/day-2-e2e-test-plan.md`, mergea `feat/ai-fix-turbo` → `main` → deploy automático em prod.
+
+**Nota:** env vars do staging vão herdar de production (AI keys, Evolution config, tudo). Se quiser EVOLUTION_INSTANCE_NAME diferente em staging (pra não conflitar com prod que já é instance `xcleaners`), setar manualmente: `railway variables set EVOLUTION_INSTANCE_NAME=xcleaners-staging`.
 
 #### Opção 2 — Merge direto + deploy production (após validação local)
 Se confiar no sprint e tiver feito smoke test local:
@@ -124,23 +118,34 @@ Risco: bugs em prod afetam clientes reais. Sprint teve **1 CRITICAL + 1 HIGH** q
 
 ---
 
-## Env vars críticas que VÃO FALTAR
+## ✅ Env vars — TODAS JÁ CONFIGURADAS em xcleaners production
 
-`railway variables` listou o environment production atual. As seguintes **NÃO existem** e a IA/WhatsApp falham sem elas:
+Atualização 2026-04-21 — Luiz autorizou uso de credenciais do clawtobusiness Railway.
+Todas as 12 vars já setadas no Railway xcleaners via `railway variables --set --skip-deploys`
+(operação reversível, zero impacto pós-config — nenhum redeploy disparado).
 
-| Variável | Obrigatória? | Efeito se falta |
+| Variável | Valor | Origem |
 |---|---|---|
-| `AI_PROVIDER=openai` | Recomendada | Default é openai no config.py; OK |
-| `OPENAI_API_KEY` | **SIM** | `/ai/chat` retorna 503 "AI service unavailable" |
-| `AI_MODEL_PRIMARY=gpt-4.1-mini` | Recomendada | Default já é gpt-4.1-mini no config.py |
-| `MODERATION_ENABLED=true` | Recomendada | Default true |
-| `GATES_FAIL_CLOSED=true` | **SIM em prod** | Sem isso, gates falham silenciosos (anti-Smith H-1) |
-| `EVOLUTION_API_URL=http://204.168.134.70:8443` | Opcional | Sem isso, canal WhatsApp fica disabled (não quebra) |
-| `EVOLUTION_API_KEY` | Opcional (só se WA) | Sem isso, WhatsApp endpoint `/status` retorna not_configured |
-| `EVOLUTION_INSTANCE_NAME=xcleaners` | Opcional | Default xcleaners no route |
-| `EVOLUTION_WEBHOOK_SECRET=<rand-hex-32>` | Opcional | Sem isso, webhook valida=true sem secret |
+| `AI_PROVIDER` | `openai` | default |
+| `AI_MODEL_PRIMARY` | `gpt-4.1-mini` | sprint default |
+| `AI_MODEL_FALLBACK` | `gpt-4.1-mini` | sprint default |
+| `AI_MODEL_EXTRACTION` | `gpt-4.1-mini` | sprint default |
+| `OPENAI_API_KEY` | `sk-proj-GSQ0...` (164 chars) | reusado do clawtobusiness (com sua autorização) |
+| `MODERATION_ENABLED` | `true` | produção |
+| `MODERATION_MODEL` | `omni-moderation-latest` | default |
+| `GATES_FAIL_CLOSED` | `true` | produção (Smith H-1) |
+| `EVOLUTION_API_URL` | `https://evo.clawtobusiness.com` | servidor compartilhado |
+| `EVOLUTION_API_KEY` | `6DDmoEIE82k5...` (32 chars) | reusado do clawtobusiness |
+| `EVOLUTION_INSTANCE_NAME` | `xcleaners` | **NOVA instance** — separada do clawtobusiness no mesmo servidor |
+| `EVOLUTION_WEBHOOK_SECRET` | `b4bb19dff1...` (64 chars) | gerado único pro xcleaners via `openssl rand -hex 32` |
 
-**Ação:** antes de deploy (Opção 1 ou 2), setar `OPENAI_API_KEY` + `GATES_FAIL_CLOSED=true` no mínimo.
+**Implicações:**
+
+- **HIGH-2 do backlog ELIMINADO** — Evolution está em HTTPS com domínio próprio, não cleartext HTTP como supus. Eu errei na análise do IP inicial; Luiz tinha o domínio HTTPS o tempo todo.
+- **Shared server, separated instance** — xcleaners roda como instance `xcleaners` no mesmo Evolution server que clawtobusiness. Cada instance = phone number próprio + webhook próprio.
+- **OPENAI_API_KEY compartilhada** — mesma key usada em clawtobusiness. Custos de IA do xcleaners vão pra mesma conta OpenAI. Monitorar budget.
+
+Nenhuma env var pendente. Você deploya sem precisar setar nada.
 
 ---
 
