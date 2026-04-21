@@ -40,6 +40,70 @@
 
 ---
 
+### HIGH-3 · Availability engine respeitar configuracao completa do owner
+
+**Origem:** discovery 2026-04-21. Teste end-to-end da IA de agendamento revelou que `availability_service.is_slot_available` so consulta `cleaning_bookings` (detecta overlap de booking existente). Ignora por completo:
+
+1. `businesses.cleaning_settings.business_hours` — horario comercial (owner diz "fecho domingo", engine aceita)
+2. `cleaning_team_availability` (day_of_week, start_time, end_time, is_available, effective_from/until) — turnos de cada cleaner
+3. `cleaning_areas.zip_codes[]` — ZIPs cobertos pelo business
+4. `cleaning_settings.travel_buffer_minutes` — override configurado pelo owner (engine usa 15/30min hardcoded)
+
+**Impacto real:**
+- Cliente via IA pode agendar domingo 3am se sem conflito de booking
+- Cliente pode agendar Maria Silva 15h se Maria so trabalha 8-12
+- Cliente em ZIP fora da area gera draft que vai recair em Pending sem warning
+- Owner precisa rejeitar manualmente drafts invalidos que IA deveria ter bloqueado na origem
+
+**Por que nao virou incidente ate agora:**
+- IA cria `status='draft'`, owner aprova manualmente em Pending Tab (human-in-the-loop)
+- OK pra MVP solo owner, NAO escala pra franquia multi-cleaner multi-zip
+- Cliente fica no limbo entre "IA aceitou" e "owner confirmou/rejeitou" — UX fraca
+
+**Arquivos afetados:**
+- `app/modules/cleaning/services/availability_service.py` — core refactor
+- `app/modules/cleaning/services/ai_tools.py` — `_check_availability` tool response format (novo campo `rejected_reason`)
+- `app/modules/cleaning/services/schedule_service.py` — mesmo gate em create_booking manual
+- `app/prompts/scheduling_customer.py` — atualizar prompt pra IA usar `rejected_reason` ao explicar alternativas
+- Migration nova (se necessario): indices em `cleaning_team_availability(business_id, day_of_week, is_available)` para query eficiente
+
+**Fix detalhado:**
+
+```python
+async def is_slot_available(
+    db, business_id, scheduled_date, scheduled_start,
+    duration_minutes, team_id=None, client_zip=None,
+) -> dict:
+    # Gate 1 — business_hours (read from cleaning_settings)
+    if not _within_business_hours(business, scheduled_date, scheduled_start, duration):
+        return {"available": False, "rejected_reason": "business_closed", "conflicts": []}
+
+    # Gate 2 — service_area (read from cleaning_areas)
+    if client_zip and not await _zip_covered(db, business_id, client_zip):
+        return {"available": False, "rejected_reason": "zip_not_covered", "conflicts": []}
+
+    # Gate 3 — team availability (se team_id dado, team_member tem turno nesse dia/hora)
+    if team_id and not await _team_member_on_shift(db, team_id, scheduled_date, scheduled_start, duration):
+        return {"available": False, "rejected_reason": "team_off_shift", "conflicts": []}
+
+    # Gate 4 — bookings existentes (logica atual)
+    conflicts = await _find_booking_conflicts(db, business_id, scheduled_date, scheduled_start, duration, team_id)
+    if conflicts:
+        return {"available": False, "rejected_reason": "booking_conflict", "conflicts": conflicts}
+
+    return {"available": True, "rejected_reason": None, "conflicts": []}
+```
+
+**Effort:** 8-12h (inclui unit tests pra cada gate + integration test do fluxo chat -> availability -> draft)
+
+**Sprint sugerido:** 2 (BLOQUEIA abrir chat IA pra cliente final em business multi-cleaner — owner solo ainda tolera via Pending Tab review)
+
+**Dependencia:** pode rodar em paralelo com HIGH-1 e HIGH-2. Nao depende de migration 029 (conversations/messages).
+
+**Ganho secundario:** destravar Opcao 2 do discovery — "auto-approve draft within constraints" pode virar feature apos esse refactor (se todos os 4 gates passarem, status='scheduled' direto sem Pending).
+
+---
+
 ## MEDIUM — endereçar em Sprint 2
 
 ### MEDIUM-1 · authenticated_client_id enforcement para reschedule/cancel tools
@@ -291,13 +355,14 @@ Luiz (Opção 2 só webchat público). Clawtobusiness tem `telegram.py`
 
 | Priority | Items | Effort total |
 |---|---|---|
-| HIGH | 2 (business_channels multi-tenant + Evolution HTTPS) | ~4 dias |
-| MEDIUM | 6 (auth ext, Fernet, audit, conversations.business_id, race lock, chat_pipeline helper) | ~15-20h |
-| LOW | 9 (polish, features extras) | ~20-25h |
+| HIGH | 3 (business_channels multi-tenant + Evolution HTTPS + availability engine) | ~5-6 dias |
+| MEDIUM | 8 (auth ext, Fernet, audit, conversations.business_id, race lock, chat_pipeline helper, lead notifier, validate_service_area) | ~20-25h |
+| LOW | 12 (polish, features extras, embed snippet, captcha, Telegram) | ~25-30h |
 | STAGING-FINDINGS | 5 (openai bump deployado, migrations faltando, Redis staging, Stripe webhook, merge) | ~8-12h |
 
-**Launch minimo pro cliente final:** fechar HIGH + MEDIUM-2 (Fernet) + MEDIUM-3 (audit).
+**Launch minimo pro cliente final:** fechar HIGH-1 + HIGH-3 (availability) + MEDIUM-2 (Fernet) + MEDIUM-3 (audit).
 **Launch pleno multi-tenant:** todo HIGH + MEDIUM.
+**HIGH-3 obrigatorio antes de franquia multi-cleaner** — owner solo tolera via Pending Tab, franquia nao.
 
 ---
 

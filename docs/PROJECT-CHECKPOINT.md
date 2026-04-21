@@ -77,6 +77,12 @@
 
 ## Proximos Passos
 
+**Teste validado 2026-04-21 EOD:**
+- [x] Controle de calendario via IA — `/ai/chat` homeowner VERDE. IA chamou get_services_catalog + check_availability corretamente (Friday 10am available=True, 0 conflicts). Guardrail "need price quote before draft" respeitou. get_price_quote falhou por seed sem pricing_rules (nao e bug do sprint AI Turbo).
+
+**Finding critico de arquitetura descoberto 2026-04-21:**
+- [ ] HIGH-3 — `availability_service` so consulta `cleaning_bookings`. IGNORA `businesses.cleaning_settings.business_hours` + `cleaning_team_availability` + `cleaning_areas` + `travel_buffer_minutes`. Cliente pode agendar domingo 3am se sem conflict. Salvo hoje pelo human-in-the-loop (Pending Tab). Bloqueia scale multi-cleaner multi-zip. Detalhe tecnico em `docs/sprints/backlog-ai-turbo-postsprint.md` secao HIGH-3 (effort 8-12h).
+
 **Hotfix critico antes de merge pra prod:**
 - [ ] STAGING-2 — criar `database/migrations/029_ai_chat_tables.sql` com `conversations` + `messages` (30 min)
 
@@ -93,6 +99,7 @@
 - [ ] STAGING-5 (Stripe webhook staging dashboard)
 - [ ] HIGH-1 (business_channels multi-tenant)
 - [ ] HIGH-2 (Evolution HTTPS — ja OK, https://evo.clawtobusiness.com)
+- [ ] HIGH-3 (availability engine — owner config respect)
 - [ ] Ver backlog completo em `docs/sprints/backlog-ai-turbo-postsprint.md`
 
 ## Git Recente
