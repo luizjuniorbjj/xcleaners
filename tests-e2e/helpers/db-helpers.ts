@@ -128,8 +128,8 @@ export async function createTestBooking(seed: TestBookingSeed): Promise<string> 
 
   if (!svcId) {
     svcId = (await pool.query<{ id: string }>(
-      `INSERT INTO cleaning_services (business_id, name, category, base_price, is_active)
-         VALUES ($1, 'E2E Standard', 'standard', 115, true)
+      `INSERT INTO cleaning_services (business_id, name, slug, category, base_price, is_active)
+         VALUES ($1, 'E2E Standard', 'e2e-standard', 'residential', 115, true)
          RETURNING id::text AS id`,
       [bizId]
     )).rows[0].id;
@@ -197,8 +197,9 @@ export async function ensureHomeownerClientLink(email: string): Promise<string> 
 
   clientId = (await pool.query<{ id: string }>(
     `INSERT INTO cleaning_clients (
-       business_id, user_id, first_name, last_name, email, phone, is_active, address_line1, city, state, zip_code
-     ) VALUES ($1,$2,'E2E','Homeowner',$3,'+15555550100',true,'123 Test Ave','Chicago','IL','60601')
+       business_id, user_id, first_name, last_name, email, phone,
+       status, address_line1, city, state, zip_code, source
+     ) VALUES ($1,$2,'E2E','Homeowner',$3,'+15555550100','active','123 Test Ave','Chicago','IL','60601','manual')
      RETURNING id::text AS id`,
     [bizId, userId, email]
   )).rows[0].id;

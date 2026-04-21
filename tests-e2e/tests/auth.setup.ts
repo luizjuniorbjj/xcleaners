@@ -1,11 +1,12 @@
 /**
- * Auth Setup — runs ONCE before the entire suite (via playwright.config projects).
+ * Auth Setup — runs ONCE before the entire suite.
+ * Located in tests/ so playwright's testDir picks it up.
  *
- * Logs in each of the 3 personas in the UI, saves storageState to .storage/*.json.
+ * Logs in each of the 3 personas, saves storageState to .storage/*.json.
  * Every subsequent test reuses these states via the auth fixture.
  */
 import { test as setup } from '@playwright/test';
-import { performLogin, OWNER_STORAGE, HOMEOWNER_STORAGE, CLEANER_STORAGE } from './auth.fixture';
+import { performLogin, OWNER_STORAGE, HOMEOWNER_STORAGE, CLEANER_STORAGE } from '../fixtures/auth.fixture';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 

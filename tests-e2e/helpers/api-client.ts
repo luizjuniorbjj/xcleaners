@@ -37,7 +37,8 @@ export class ApiClient {
   }
 
   async login(email: string, password: string): Promise<{ access_token: string; refresh_token?: string }> {
-    const res = await fetch(`${this.baseUrl}/api/v1/auth/login`, {
+    // Real backend prefix is /auth (not /api/v1/auth)
+    const res = await fetch(`${this.baseUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
