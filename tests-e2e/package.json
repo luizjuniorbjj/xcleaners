@@ -1,0 +1,34 @@
+{
+  "name": "xcleaners-e2e",
+  "version": "0.1.0",
+  "description": "End-to-end test suite for Xcleaners — Page Object Model + Playwright",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test tests/smoke",
+    "test:regression": "playwright test tests/regression",
+    "test:policy": "playwright test tests/regression/policy-mvp",
+    "test:negative": "playwright test tests/negative",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report reports/html",
+    "seed": "ts-node helpers/seed.ts",
+    "reset": "ts-node helpers/reset.ts",
+    "codegen": "playwright codegen https://app.xcleaners.app"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.0",
+    "dotenv": "^16.4.1",
+    "pg": "^8.11.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "bcryptjs": "^2.4.3",
+    "@types/bcryptjs": "^2.4.6"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,147 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests-e2e/**'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'frontend/**'
+      - 'tests-e2e/**'
+  schedule:
+    - cron: '0 6 * * *'  # nightly at 06:00 UTC — full regression
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Suite to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - regression
+          - policy
+          - negative
+          - all
+
+jobs:
+  smoke:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'smoke')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tests-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests-e2e/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run smoke tests
+        env:
+          TEST_ENV: prod
+          BASE_URL: ${{ secrets.E2E_BASE_URL || 'https://app.xcleaners.app' }}
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          BUSINESS_SLUG: e2e-testing-co
+          TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          OWNER_EMAIL: test-e2e-owner@xcleaners.test
+          HOMEOWNER_EMAIL: test-e2e-homeowner@xcleaners.test
+          CLEANER_EMAIL: test-e2e-cleaner@xcleaners.test
+          CI: 'true'
+        run: npm run test:smoke
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ github.run_id }}
+          path: tests-e2e/reports/
+          retention-days: 14
+
+  regression:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'regression' || inputs.suite == 'all'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tests-e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests-e2e/package-lock.json
+
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+
+      - name: Run regression
+        env:
+          TEST_ENV: prod
+          BASE_URL: ${{ secrets.E2E_BASE_URL || 'https://app.xcleaners.app' }}
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          BUSINESS_SLUG: e2e-testing-co
+          TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          OWNER_EMAIL: test-e2e-owner@xcleaners.test
+          HOMEOWNER_EMAIL: test-e2e-homeowner@xcleaners.test
+          CLEANER_EMAIL: test-e2e-cleaner@xcleaners.test
+          CI: 'true'
+        run: npm run test:regression
+
+      - name: Upload full report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-report-${{ github.run_id }}
+          path: tests-e2e/reports/
+          retention-days: 30
+
+  policy:
+    if: github.event_name == 'workflow_dispatch' && (inputs.suite == 'policy' || inputs.suite == 'all')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tests-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tests-e2e/package-lock.json
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+      - env:
+          TEST_ENV: prod
+          BASE_URL: ${{ secrets.E2E_BASE_URL || 'https://app.xcleaners.app' }}
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          BUSINESS_SLUG: e2e-testing-co
+          TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          OWNER_EMAIL: test-e2e-owner@xcleaners.test
+          HOMEOWNER_EMAIL: test-e2e-homeowner@xcleaners.test
+          CLEANER_EMAIL: test-e2e-cleaner@xcleaners.test
+          CI: 'true'
+        run: npm run test:policy
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-report-${{ github.run_id }}
+          path: tests-e2e/reports/
+          retention-days: 30
