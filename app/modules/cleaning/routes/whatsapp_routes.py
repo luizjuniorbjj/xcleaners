@@ -229,6 +229,58 @@ async def _process_incoming(slug: str, payload: dict):
             logger.warning("[WHATSAPP] Failed to send onboarding msg: %s", e)
         return
 
+    # M-2D fix Smith verify 2026-04-21: moderation + rate_limit no canal WhatsApp.
+    # Mesmo pattern do /ai/chat (Smith C-1/H-1 Dia 1). Canal exposto sem protecao
+    # seria vetor de DDoS/flood + passagem de conteudo toxico.
+    from app.config import GATES_FAIL_CLOSED
+    from app.moderation_service import get_moderation_service
+    from app.rate_limiter import rate_limiter
+
+    # Moderation
+    try:
+        mod = await get_moderation_service().check(incoming.text)
+        if mod.flagged:
+            logger.warning(
+                "[WHATSAPP] Moderation flagged from %s — dropping",
+                incoming.sender_id[:12],
+            )
+            try:
+                await adapter.send_message(
+                    incoming.sender_id,
+                    "Your message was flagged by our content safety system. Please rephrase.",
+                )
+            except Exception:
+                pass
+            return
+    except Exception as e:
+        logger.exception("[WHATSAPP] moderation gate failed: %s", e)
+        if GATES_FAIL_CLOSED:
+            # Fail-closed: nao processa nem responde (evita flood se OpenAI API down)
+            return
+
+    # Rate limit por phone — 20/60s (mais restritivo que web por higher abuse risk)
+    try:
+        allowed = await rate_limiter.is_allowed(
+            f"whatsapp:{phone}", max_requests=20, window_seconds=60,
+        )
+        if not allowed:
+            logger.warning(
+                "[WHATSAPP] Rate limit exceeded for %s",
+                incoming.sender_id[:12],
+            )
+            try:
+                await adapter.send_message(
+                    incoming.sender_id,
+                    "Too many messages. Please wait a moment before sending more.",
+                )
+            except Exception:
+                pass
+            return
+    except Exception as e:
+        logger.exception("[WHATSAPP] rate_limit gate failed: %s", e)
+        if GATES_FAIL_CLOSED:
+            return
+
     # Indicador de digitacao (best-effort)
     try:
         await adapter.send_typing(incoming.sender_id)

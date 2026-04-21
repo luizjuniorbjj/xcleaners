@@ -50,7 +50,7 @@ async def generate_daily_schedule_all_businesses():
     start = datetime.now(timezone.utc)
     logger.info("[SCHED] daily_schedule started at %s", start.isoformat())
 
-    db = get_db_instance()
+    db = await get_db_instance()
     if not db:
         logger.warning("[SCHED] daily_schedule skipped: no DB")
         return
@@ -105,7 +105,7 @@ async def send_24h_reminders():
     start = datetime.now(timezone.utc)
     logger.info("[SCHED] 24h_reminders started at %s", start.isoformat())
 
-    db = get_db_instance()
+    db = await get_db_instance()
     if not db:
         logger.warning("[SCHED] 24h_reminders skipped: no DB")
         return
@@ -173,7 +173,7 @@ async def draft_ttl_cleanup():
     """
     from app.database import get_db_instance
 
-    db = get_db_instance()
+    db = await get_db_instance()
     if not db:
         return  # silent — roda 288 vezes por dia, nao pollute logs
 
