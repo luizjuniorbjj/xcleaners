@@ -9,7 +9,7 @@ import logging
 from enum import Enum
 from typing import Optional
 
-logger = logging.getLogger("clawin.circuit_breaker")
+logger = logging.getLogger("xcleaners.circuit_breaker")
 
 
 class CircuitState(Enum):
