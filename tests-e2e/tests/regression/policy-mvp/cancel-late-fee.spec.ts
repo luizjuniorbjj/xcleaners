@@ -47,7 +47,7 @@ test.describe('Policy MVP — Late cancellation fee banner', () => {
   test('late cancel shows red banner with exact $100.00 fee (50% of $200)', async ({ homeownerPage }) => {
     const bookings = new MyBookingsPage(homeownerPage);
     await bookings.goto();
-    await homeownerPage.reload(); // ensure fresh policy read
+    // goto() already hydrates
 
     const cancelModal = await bookings.openCancelModal(0);
     // Banner + exact fee (math guard — if policy or price mutates, this catches it)
@@ -59,7 +59,7 @@ test.describe('Policy MVP — Late cancellation fee banner', () => {
     await resetPolicy({ fee_percentage: 25 }); // 25% now
     const bookings = new MyBookingsPage(homeownerPage);
     await bookings.goto();
-    await homeownerPage.reload();
+    // goto() already hydrates
 
     const cancelModal = await bookings.openCancelModal(0);
     await cancelModal.expectLateFee(50.0); // 25% of 200

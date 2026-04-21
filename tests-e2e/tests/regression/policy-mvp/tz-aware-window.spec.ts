@@ -55,7 +55,7 @@ test.describe('Policy MVP — Timezone-aware window', () => {
   test('near booking (10h) is LATE, far booking (72h) is NOT late', async ({ homeownerPage }) => {
     const bookings = new MyBookingsPage(homeownerPage);
     await bookings.goto();
-    await homeownerPage.reload();
+    // goto() already hydrates
 
     // Open cancel on the near (first / earliest) booking — expect late fee banner
     const near = await bookings.openCancelModal(0);

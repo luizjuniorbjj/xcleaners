@@ -161,9 +161,12 @@ export async function createTestBooking(seed: TestBookingSeed): Promise<string> 
 
 function addHours(time: string, hours: number): string {
   const [h, m, s] = time.split(':').map(Number);
-  const total = h * 3600 + m * 60 + (s || 0) + hours * 3600;
-  const hh = String(Math.floor(total / 3600)).padStart(2, '0');
-  const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  let totalSec = h * 3600 + m * 60 + (s || 0) + hours * 3600;
+  // Clamp at 23:59:00 instead of overflowing past midnight — TIME column
+  // rejects > 24h. The exact end hour is irrelevant for our gate logic.
+  if (totalSec >= 24 * 3600) totalSec = 23 * 3600 + 59 * 60;
+  const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
   return `${hh}:${mm}:00`;
 }
 

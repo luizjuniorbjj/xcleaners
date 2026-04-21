@@ -56,7 +56,7 @@ test.describe('Policy MVP — Reschedule limit visual gate', () => {
   test('booking at count=max shows "Already rescheduled" badge, no Reschedule button', async ({ homeownerPage }) => {
     const bookings = new MyBookingsPage(homeownerPage);
     await bookings.goto();
-    await homeownerPage.reload();
+    // goto() already hydrates
 
     // Find the specific card for bookingAtLimit — assume earliest date is at index 0
     // (we seeded at day+7 and day+14, so day+7 is first in upcoming list)

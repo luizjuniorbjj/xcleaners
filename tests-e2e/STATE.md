@@ -11,24 +11,26 @@
 ## Marcos (checklist progressivo)
 
 - [x] 00. Análise / arquitetura decidida (TypeScript + Playwright + POM + multi-env)
-- [x] 01. Seed DB prod: business `e2e-testing-co` + 3 users `test-e2e-*@xcleaners.test` (senha `E2eTest2026!`)
+- [x] 01. Seed DB prod: business `e2e-testing-co` + 3 users `test-e2e-*@xcleaners-e2e.com`
 - [x] 02. Estrutura pastas `tests-e2e/`
 - [x] 03. `package.json` + `tsconfig.json` + `.env.{prod,staging,example}` + `.gitignore`
 - [x] 04. `playwright.config.ts` multi-env com reporter + trace/screenshot on failure
-- [ ] 05. `npm install` (Playwright + deps)
-- [ ] 06. Fixtures (`fixtures/auth.fixture.ts`, `fixtures/db.fixture.ts`, `fixtures/policy.fixture.ts`)
-- [ ] 07. Page Objects (11 POMs: LoginPage + 7 owner + 3 homeowner + 1 cleaner)
-- [ ] 08. Helpers (`helpers/api-client.ts`, `helpers/db-helpers.ts`, `helpers/assertions.ts`)
-- [ ] 09. Tests — Smoke (3 specs)
-- [ ] 10. Tests — Policy MVP (5 specs — core value)
-- [ ] 11. Tests — Regression (7 specs)
-- [ ] 12. Tests — Negativos (2 specs)
-- [ ] 13. Primeiro run completo + trace de falhas
-- [ ] 14. Bug fixes (autorizados conservadoramente)
-- [ ] 15. `.github/workflows/e2e.yml` CI matriz
-- [ ] 16. `README.md` + `CONTRIBUTING.md` + `BACKLOG.md`
-- [ ] 17. `REPORT-2026-04-21.md` resultado final
-- [ ] 18. Commits progressivos no git local (push → @devops de manhã)
+- [x] 05. `npm install` + `npx playwright install chromium`
+- [x] 06. Fixtures (auth.fixture + auth.setup + policy.fixture)
+- [x] 07. Page Objects (11 POMs: LoginPage + 7 owner + 3 homeowner + 1 cleaner)
+- [x] 08. Helpers (api-client + db-helpers + assertions)
+- [x] 09. Tests — Smoke (3 files, 9 specs) — ALL PASS
+- [x] 10. Tests — Policy MVP (5 specs) — ALL PASS
+- [x] 11. Tests — Regression (7 specs) — ALL PASS
+- [x] 12. Tests — Negativos (2 specs) — ALL PASS
+- [x] 13. Primeiro run completo + fixes
+- [x] 14. Bug fixes autorizados (addHours overflow, hydrate timing, selectors)
+- [x] 15. `.github/workflows/e2e.yml` CI matriz
+- [x] 16. `README.md` + `CONTRIBUTING.md` + `BACKLOG.md`
+- [x] 17. `REPORT-2026-04-21.md` resultado final
+- [x] 18. Commits progressivos no git local (push → @devops de manhã)
+
+**TOTAL: 32/32 specs passing em 56.4s.**
 
 ## Ambiente criado (prod Railway)
 
@@ -63,18 +65,15 @@
 
 ## Próximo passo imediato
 
-**ENTREGA CONCLUÍDA.** Próxima sessão começa lendo `REPORT-2026-04-21.md`. Para ligar as 10 specs Policy MVP que ainda falham em UI timing:
+**ENTREGA 100% CONCLUÍDA — 32/32 specs PASSING em 56.4s.**
 
-1. Abrir qualquer spec em `tests/regression/policy-mvp/*.spec.ts`
-2. Após `createTestBooking`, adicionar:
-   ```ts
-   await page.waitForTimeout(1000);
-   await homeownerPage.reload();
-   await page.waitForLoadState('networkidle');
-   ```
-3. Re-rodar `npx playwright test` até green
-
-OU converter assertions UI-only em API+UI mix usando `ApiClient` em `helpers/api-client.ts`.
+Todos os fixes necessários já aplicados:
+- `addHours` com clamp em 23:59 (evita overflow TIME)
+- `MyBookingsPage.goto()` com hydrate sync (network idle + card/empty-state wait)
+- `CancelModal` seletors do banner via div parent (não cross-text regex)
+- `OwnerSettingsPage.savePolicy` com `waitForResponse` no PUT /settings
+- DB helpers: schema alinhado (`status` vs `is_active`, `slug`, `category` enum)
+- users com domain `.com` (não `.test` reserved)
 
 ## Rule do reload de contexto (diretriz Luiz 2026-04-20)
 

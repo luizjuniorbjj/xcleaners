@@ -33,7 +33,33 @@ export class MyBookingsPage {
 
   async goto(): Promise<void> {
     await this.page.goto('/my-bookings');
+    await this.hydrate();
+  }
+
+  /**
+   * Wait until the bookings list is hydrated (skeleton gone, cards or
+   * empty-state visible). Call after any action that refetches the list.
+   */
+  async hydrate(): Promise<void> {
     await this.heading.waitFor({ state: 'visible', timeout: 10_000 });
+    await this.page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    // Wait until either at least one card is rendered OR empty-state appears
+    // — this is the real signal that CleanAPI fetch resolved.
+    await this.page
+      .waitForFunction(
+        () =>
+          document.querySelectorAll('.cc-card.cc-card-interactive').length > 0 ||
+          !!document.querySelector('.cc-empty-state'),
+        undefined,
+        { timeout: 10_000 },
+      )
+      .catch(() => {});
+    await this.page.waitForTimeout(300);
+  }
+
+  async reloadAndHydrate(): Promise<void> {
+    await this.page.reload();
+    await this.hydrate();
   }
 
   /** Open the cancel modal for the Nth upcoming booking (0-indexed). */

@@ -73,9 +73,20 @@ export class OwnerSettingsPage {
   }
 
   async savePolicy(): Promise<void> {
+    // Listen for the actual /settings PUT response before returning — this is
+    // the only reliable signal that the JSONB merge has committed and a
+    // subsequent DB read will see the new values.
+    const responsePromise = this.page.waitForResponse(
+      (res) => res.url().includes('/settings') && res.request().method() === 'PUT' && res.ok(),
+      { timeout: 15_000 },
+    );
     await this.saveBtn.click();
-    // Wait for toast or URL stable — the form POSTs to /settings
-    await this.page.waitForLoadState('networkidle', { timeout: 10_000 });
+    await responsePromise.catch(() => {
+      // If waitForResponse misses (e.g., demo mode), fall back to network idle
+      return this.page.waitForLoadState('networkidle', { timeout: 5_000 });
+    });
+    // Small settle for toast + re-render
+    await this.page.waitForTimeout(500);
   }
 
   async expectLegacyGhostFieldAbsent(): Promise<void> {

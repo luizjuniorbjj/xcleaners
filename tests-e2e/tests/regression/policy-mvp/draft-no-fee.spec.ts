@@ -36,7 +36,7 @@ test.describe('Policy MVP — Draft no-fee rule', () => {
   test('draft within 24h shows amber warning (no fee amount)', async ({ homeownerPage }) => {
     const bookings = new MyBookingsPage(homeownerPage);
     await bookings.goto();
-    await homeownerPage.reload();
+    // goto() already hydrates
 
     const cancel = await bookings.openCancelModal(0);
     await cancel.expectAmberWarning();

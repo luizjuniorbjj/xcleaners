@@ -52,8 +52,7 @@ test.describe('Policy MVP — Reactive policy edit', () => {
     await settings.savePolicy();
 
     // Homeowner reloads — sees $30 now
-    await homeownerPage.reload();
-    bookings = new MyBookingsPage(homeownerPage);
+    await bookings.reloadAndHydrate();
     modal = await bookings.openCancelModal(0);
     await modal.expectLateFee(30.0);
     await modal.close();

@@ -20,9 +20,10 @@ export class CancelModal {
     this.page = page;
     this.modal = page.locator('#cancel-modal');
     this.title = this.modal.getByRole('heading', { name: /cancel cleaning/i });
-    // Banner identification by their unique text — more stable than hex color selectors
-    this.lateBanner = this.modal.getByText(/late cancellation.*fee of \$/i);
-    this.amberBanner = this.modal.getByText(/this is a late cancellation/i);
+    // Banner identified by the "⚠️ Late cancellation" heading line
+    // (the fee amount is in a sibling div, not the same text node)
+    this.lateBanner = this.modal.locator('div', { hasText: '⚠️ Late cancellation' }).first();
+    this.amberBanner = this.modal.locator('div', { hasText: /⚠️ This is a late cancellation/i }).first();
     this.reasonSelect = this.modal.locator('#cancel-reason');
     this.keepBookingBtn = this.modal.getByRole('button', { name: /keep booking/i });
     this.yesCancelBtn = this.modal.getByRole('button', { name: /yes, cancel/i });
@@ -34,9 +35,13 @@ export class CancelModal {
   }
 
   async getLateFeeDisplayed(): Promise<number | null> {
-    if (!(await this.lateBanner.isVisible().catch(() => false))) return null;
-    const text = (await this.lateBanner.textContent()) || '';
-    const match = text.match(/\$([\d,]+\.\d{2})/);
+    // The fee amount lives in a <strong> sibling of the "⚠️ Late cancellation" div.
+    // We grab any $X.XX in the modal body — the red banner only shows when late+fee>0.
+    const body = this.modal.locator('.cc-modal-body');
+    if (!(await body.isVisible().catch(() => false))) return null;
+    const text = (await body.textContent()) || '';
+    // Look for the "A fee of $X.XX" pattern specifically (not just any dollar)
+    const match = text.match(/fee of \$([\d,]+\.\d{2})/i);
     return match ? Number(match[1].replace(/,/g, '')) : null;
   }
 
