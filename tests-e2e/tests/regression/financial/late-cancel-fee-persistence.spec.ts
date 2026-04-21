@@ -1,19 +1,13 @@
 /**
- * Financial — Late cancel fee persistence (GAP DETECTION).
+ * Financial — Late cancel fee persistence (M3 fixed).
  *
- * Documents the current state of late-cancellation fees:
- *   - UI shows the fee banner correctly (covered by Policy MVP specs)
- *   - Backend returns fee_amount in the cancel response
- *   - ⚠️ BUT no DB record (invoice / debit / ledger entry) is created
+ * Validates the late-cancellation fee flow:
+ *   - UI shows the fee banner (covered by Policy MVP specs)
+ *   - Backend returns fee_amount + fee_invoice_id in response
+ *   - Draft invoice is auto-created recording the debit (M3 fix)
  *
- * This means currently: homeowner cancels late, UI warns of the fee,
- * but owner has no trail to actually collect it. For 3sisters cutover
- * this is a REVENUE LEAK — document explicitly until fee persistence
- * is implemented in a follow-up sprint.
- *
- * Spec acts as both assertion of the current (limited) behaviour AND
- * guardrail: when fee persistence ships, the last test flips from
- * `expect(0)` to `expect(1)` and surfaces the change.
+ * Before fix: fee was display-only → revenue leak. Now: concrete
+ * invoice row in /invoices that owner sends via Stripe or waives.
  */
 import { test, expect } from '../../../fixtures/auth.fixture';
 import { ApiClient } from '../../../helpers/api-client';
@@ -22,6 +16,7 @@ import {
   ensureHomeownerClientLink,
   createTestBooking,
   deleteBooking,
+  deleteInvoicesForBooking,
   pool,
   getE2EBusinessId,
 } from '../../../helpers/db-helpers';
@@ -47,10 +42,15 @@ test.describe('Financial — Late cancel fee (persistence gap)', () => {
   });
 
   test.afterEach(async () => {
-    if (bookingId) await deleteBooking(bookingId);
+    // Order matters: invoice cleanup first (FK booking_id → SET NULL on delete
+    // would leave orphans otherwise).
+    if (bookingId) {
+      await deleteInvoicesForBooking(bookingId);
+      await deleteBooking(bookingId);
+    }
   });
 
-  test('late cancel response reports fee_amount = price * fee_percentage / 100', async () => {
+  test('late cancel response reports fee_amount + fee_invoice_id (post-fix M3)', async () => {
     const api = new ApiClient();
     await api.login(HOMEOWNER_EMAIL, PASSWORD);
 
@@ -59,12 +59,16 @@ test.describe('Financial — Late cancel fee (persistence gap)', () => {
       late_cancellation: boolean;
       fee_amount: number;
       fee_percentage: number;
+      fee_invoice_id: string | null;
+      fee_invoice_number: string | null;
     }>(`/my-bookings/${bookingId}/cancel`, { reason: 'E2E late-cancel test' });
 
     expect(res.success).toBe(true);
     expect(res.late_cancellation).toBe(true);
     expect(Number(res.fee_amount)).toBe(90); // 50% of 180
     expect(Number(res.fee_percentage)).toBe(50);
+    expect(res.fee_invoice_id, 'fee_invoice_id must be set after late cancel').toBeTruthy();
+    expect(res.fee_invoice_number).toMatch(/^INV-/);
   });
 
   test('booking row has status=cancelled and cancelled_by=client after late-cancel', async () => {
@@ -81,21 +85,52 @@ test.describe('Financial — Late cancel fee (persistence gap)', () => {
     expect(res.rows[0]?.cancelled_by).toBe('client');
   });
 
-  test('⚠️ GAP — no invoice/ledger row is created for the fee (documents current state)', async () => {
+  test('draft fee invoice persisted with correct total + line item (M3 fix)', async () => {
     const api = new ApiClient();
     await api.login(HOMEOWNER_EMAIL, PASSWORD);
-    await api.post(`/my-bookings/${bookingId}/cancel`, { reason: 'E2E fee persistence check' });
+    await api.post(`/my-bookings/${bookingId}/cancel`, { reason: 'E2E fee persistence' });
 
     const bizId = await getE2EBusinessId();
-    const invoices = await pool.query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM cleaning_invoices WHERE booking_id = $1 AND business_id = $2`,
+    const invRes = await pool.query<{
+      id: string; total: string; status: string; invoice_number: string;
+    }>(
+      `SELECT id::text, total::text, status, invoice_number
+         FROM cleaning_invoices
+         WHERE booking_id = $1 AND business_id = $2`,
       [bookingId, bizId]
     );
-    // Today (pre-fix): 0. When fee persistence ships, flip to expect(1).
-    expect(
-      parseInt(invoices.rows[0].c, 10),
-      'currently NO invoice is created for a late-cancel fee — ' +
-        'this spec exists to document the gap and surface the change when fixed'
-    ).toBe(0);
+    expect(invRes.rows.length, 'exactly one draft fee invoice should exist').toBe(1);
+    expect(parseFloat(invRes.rows[0].total)).toBe(90); // 50% of 180
+    expect(invRes.rows[0].status).toBe('draft');
+    expect(invRes.rows[0].invoice_number).toMatch(/^INV-/);
+
+    // Line item carries the "Late cancellation fee — ..." label owner sees in /invoices
+    const itemRes = await pool.query<{ description: string; total: string }>(
+      `SELECT description, total::text
+         FROM cleaning_invoice_items
+         WHERE invoice_id = $1`,
+      [invRes.rows[0].id]
+    );
+    expect(itemRes.rows.length).toBe(1);
+    expect(itemRes.rows[0].description).toMatch(/late cancellation fee/i);
+    expect(parseFloat(itemRes.rows[0].total)).toBe(90);
+  });
+
+  test('fee invoice shows up in owner /invoices listing immediately', async () => {
+    const homeowner = new ApiClient();
+    await homeowner.login(HOMEOWNER_EMAIL, PASSWORD);
+    const cancelRes = await homeowner.post<{ fee_invoice_id: string }>(
+      `/my-bookings/${bookingId}/cancel`, { reason: 'E2E owner visibility' }
+    );
+
+    const owner = new ApiClient();
+    await owner.login(process.env.OWNER_EMAIL!, PASSWORD);
+    const list = await owner.get<{ invoices: { id: string; status: string; total: number }[] }>(
+      '/invoices?status=draft'
+    );
+    const found = list.invoices.find((i) => i.id === cancelRes.fee_invoice_id);
+    expect(found, 'owner must see the fee invoice in /invoices listing').toBeTruthy();
+    expect(found!.status).toBe('draft');
+    expect(Number(found!.total)).toBe(90);
   });
 });

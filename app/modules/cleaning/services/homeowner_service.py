@@ -361,9 +361,6 @@ async def cancel_booking(
             "message": "This booking cannot be cancelled. It may be already completed or in progress.",
         }
 
-    # Fee is computed from the business-configured policy percentage — not
-    # collected here (Stripe automation is a future sprint) but exposed in
-    # the response so the UI can both warn before and confirm after.
     policy = await get_cancellation_policy(db, business_id)
     fee_percentage = float(policy.get("fee_percentage") or 0)
     hours_window = int(policy.get("hours_before") or 24)
@@ -379,6 +376,23 @@ async def cancel_booking(
            WHERE id = $3 AND business_id = $4""",
         reason or "Client cancelled", now, booking_id, business_id,
     )
+
+    # On late cancellation, auto-create a draft invoice for the fee so the
+    # owner has a concrete debit record (visible in /invoices with clear
+    # label) instead of a purely informational UI banner that leaks revenue.
+    # Best-effort: invoice failure does NOT block the cancel.
+    fee_invoice = None
+    if is_late and fee_amount > 0:
+        try:
+            fee_invoice = await _create_late_cancel_fee_invoice(
+                db, business_id, client_id, str(booking_id),
+                booking["scheduled_date"], float(fee_amount),
+            )
+        except Exception as e:
+            logger.warning(
+                "[HOMEOWNER] Failed to auto-create late-cancel fee invoice for booking %s: %s",
+                booking_id, e,
+            )
 
     # Publish SSE
     team_id = str(booking["team_id"]) if booking["team_id"] else None
@@ -399,7 +413,62 @@ async def cancel_booking(
         "late_cancellation": is_late,
         "fee_amount": fee_amount,
         "fee_percentage": fee_percentage if is_late else 0,
+        "fee_invoice_id": fee_invoice["id"] if fee_invoice else None,
+        "fee_invoice_number": fee_invoice["invoice_number"] if fee_invoice else None,
         "cancelled_at": now.isoformat(),
+    }
+
+
+async def _create_late_cancel_fee_invoice(
+    db: Database,
+    business_id: str,
+    client_id: str,
+    booking_id: str,
+    scheduled_date,
+    fee_amount: float,
+) -> dict:
+    """
+    Create a draft invoice recording a late-cancellation fee.
+
+    The fee is persisted as a standard invoice row so it flows through
+    the existing /invoices listing, Stripe send/pay flow, and LTV
+    aggregation. Owner reviews and decides to send or waive.
+
+    Kept decoupled from `generate_invoice` (which requires a non-cancelled
+    booking) and uses the invoice service's atomic number generator.
+    """
+    from app.modules.cleaning.services.invoice_service import _next_invoice_number
+
+    invoice_number = await _next_invoice_number(db, business_id)
+    due_date = date.today() + timedelta(days=7)
+    booking_ref = f"{scheduled_date}#{booking_id[:8]}"
+    description = f"Late cancellation fee — booking {booking_ref}"
+
+    inv_row = await db.pool.fetchrow(
+        """INSERT INTO cleaning_invoices
+           (business_id, client_id, booking_id, invoice_number,
+            subtotal, tax_rate, tax_amount, discount_amount, total,
+            issue_date, due_date, status, internal_notes)
+           VALUES ($1, $2, $3, $4, $5, 0, 0, 0, $5,
+                   CURRENT_DATE, $6, 'draft', $7)
+           RETURNING id, invoice_number, total""",
+        business_id, client_id, booking_id, invoice_number,
+        fee_amount, due_date,
+        f"Auto-generated from late cancellation of booking {booking_ref}",
+    )
+
+    await db.pool.execute(
+        """INSERT INTO cleaning_invoice_items
+           (invoice_id, business_id, service_id, description,
+            quantity, unit_price, total, sort_order)
+           VALUES ($1, $2, NULL, $3, 1, $4, $4, 0)""",
+        inv_row["id"], business_id, description, fee_amount,
+    )
+
+    return {
+        "id": str(inv_row["id"]),
+        "invoice_number": inv_row["invoice_number"],
+        "total": float(inv_row["total"]),
     }
 
 
