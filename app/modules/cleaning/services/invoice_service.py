@@ -356,11 +356,13 @@ async def mark_paid(
     total = float(current["total"])
     new_status = "paid" if new_paid >= total else "partial"
 
+    # Cast $4 explicitly — asyncpg raises AmbiguousParameterError when a param
+    # is used in both a SET clause and a CASE comparison (can't deduce type).
     row = await db.pool.fetchrow(
         """UPDATE cleaning_invoices
-           SET amount_paid = $3, status = $4,
+           SET amount_paid = $3, status = $4::varchar,
                payment_method = $5, payment_reference = $6,
-               paid_at = CASE WHEN $4 = 'paid' THEN NOW() ELSE paid_at END,
+               paid_at = CASE WHEN $4::varchar = 'paid' THEN NOW() ELSE paid_at END,
                updated_at = NOW()
            WHERE id = $1 AND business_id = $2
            RETURNING *""",
