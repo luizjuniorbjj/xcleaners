@@ -191,7 +191,9 @@ async def _run_openai_tools(
     provider: str,
 ) -> str:
     """Run tool loop using OpenAI function calling (works for proxy too)."""
-    model = PROXY_MODEL_PRIMARY if provider == "proxy" else "gpt-4o-mini"
+    # FIX 2026-04-20: remover hardcoded gpt-4o-mini — usar AI_MODEL_PRIMARY do config
+    # (default atual: gpt-4.1-mini). Motor do chat em produção via config centralizada.
+    model = PROXY_MODEL_PRIMARY if provider == "proxy" else AI_MODEL_PRIMARY
     tools_openai = _convert_tools_to_openai_format(AI_TOOLS)
 
     messages = [
@@ -317,17 +319,26 @@ async def suggest_team_assignment(
     logger.info("[AI_SCHED] suggest_team for booking %s", booking_id)
 
     # Get booking info
+    # FIX 2026-04-20: schema real usa cleaning_clients (nao cleaning_client_schedules
+    # em joins por client_id) + cleaning_services (nao cleaning_service_types).
+    # service_id substitui service_type_id. preferred_team_id vive em
+    # cleaning_client_schedules — subquery correlacionada pega o schedule ativo.
     booking = await db.pool.fetchrow(
         """
         SELECT
-            b.id, b.scheduled_date, b.client_id, b.service_type_id,
+            b.id, b.scheduled_date, b.client_id, b.service_id,
             b.estimated_duration_minutes, b.team_id,
-            cs.client_name, cs.address_line1, cs.city, cs.zip_code,
-            cs.latitude, cs.longitude, cs.preferred_team_id,
-            st.name AS service_type_name
+            (c.first_name || ' ' || COALESCE(c.last_name, '')) AS client_name,
+            c.address_line1, c.city, c.zip_code,
+            c.latitude, c.longitude,
+            (SELECT preferred_team_id
+               FROM cleaning_client_schedules
+              WHERE client_id = b.client_id AND status = 'active'
+              ORDER BY created_at DESC LIMIT 1) AS preferred_team_id,
+            s.name AS service_type_name
         FROM cleaning_bookings b
-        LEFT JOIN cleaning_client_schedules cs ON cs.id = b.client_id
-        LEFT JOIN cleaning_service_types st ON st.id = b.service_type_id
+        LEFT JOIN cleaning_clients c ON c.id = b.client_id
+        LEFT JOIN cleaning_services s ON s.id = b.service_id
         WHERE b.id = $1 AND b.business_id = $2
         """,
         booking_id,
@@ -402,20 +413,24 @@ async def predict_duration(
 
     # Direct data query — no need for full AI tool loop here
     # Get client's historical durations
+    # FIX 2026-04-20: actual_duration_minutes nao existe no schema — computar
+    # de actual_end - actual_start. service_id substitui service_type_id.
+    # cleaning_services substitui cleaning_service_types (tabela inexistente).
     rows = await db.pool.fetch(
         """
         SELECT
-            b.actual_duration_minutes,
+            CAST(EXTRACT(EPOCH FROM (b.actual_end - b.actual_start)) / 60 AS INTEGER) AS actual_duration_minutes,
             b.estimated_duration_minutes,
-            b.service_type_id,
-            st.name AS service_type_name,
+            b.service_id,
+            s.name AS service_type_name,
             b.scheduled_date
         FROM cleaning_bookings b
-        LEFT JOIN cleaning_service_types st ON st.id = b.service_type_id
+        LEFT JOIN cleaning_services s ON s.id = b.service_id
         WHERE b.client_id = $1
           AND b.business_id = $2
           AND b.status = 'completed'
-          AND b.actual_duration_minutes IS NOT NULL
+          AND b.actual_start IS NOT NULL
+          AND b.actual_end IS NOT NULL
         ORDER BY b.scheduled_date DESC
         LIMIT 15
         """,
@@ -427,17 +442,19 @@ async def predict_duration(
         # No history — use service type default or global average
         default_minutes = 120
         if service_type_id:
+            # FIX 2026-04-20: tabela real e cleaning_services com coluna
+            # estimated_duration_minutes. cleaning_service_types nao existe.
             st_row = await db.pool.fetchrow(
                 """
-                SELECT default_duration_minutes
-                FROM cleaning_service_types
+                SELECT estimated_duration_minutes
+                FROM cleaning_services
                 WHERE id = $1 AND business_id = $2
                 """,
                 service_type_id,
                 business_id,
             )
-            if st_row and st_row["default_duration_minutes"]:
-                default_minutes = st_row["default_duration_minutes"]
+            if st_row and st_row["estimated_duration_minutes"]:
+                default_minutes = st_row["estimated_duration_minutes"]
 
         return {
             "status": "success",
@@ -453,8 +470,9 @@ async def predict_duration(
         }
 
     # Filter by matching service type if provided
+    # FIX 2026-04-20: chave da row renomeada de service_type_id para service_id.
     if service_type_id:
-        matching = [r for r in rows if str(r["service_type_id"]) == service_type_id]
+        matching = [r for r in rows if str(r["service_id"]) == service_type_id]
         if len(matching) >= 3:
             rows = matching
 

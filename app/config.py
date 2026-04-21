@@ -53,9 +53,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Provider: "proxy" | "openai" | "anthropic"
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
-AI_MODEL_PRIMARY = os.getenv("AI_MODEL_PRIMARY", "gpt-4o-mini")
-AI_MODEL_FALLBACK = os.getenv("AI_MODEL_FALLBACK", "gpt-4o-mini")
-AI_MODEL_EXTRACTION = os.getenv("AI_MODEL_EXTRACTION", "gpt-4o-mini")
+AI_MODEL_PRIMARY = os.getenv("AI_MODEL_PRIMARY", "gpt-4.1-mini")
+AI_MODEL_FALLBACK = os.getenv("AI_MODEL_FALLBACK", "gpt-4.1-mini")
+AI_MODEL_EXTRACTION = os.getenv("AI_MODEL_EXTRACTION", "gpt-4.1-mini")
 
 # Proxy settings (optional)
 PROXY_URL = os.getenv("AI_PROXY_URL", "")
@@ -66,6 +66,10 @@ PROXY_MODEL_EXTRACTION = AI_MODEL_EXTRACTION
 
 MAX_TOKENS_RESPONSE = 2000
 MAX_CONTEXT_TOKENS = 4000
+
+# Moderation (OpenAI Moderation API — free, used in /ai/chat pipeline)
+MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "true").lower() == "true"
+MODERATION_MODEL = os.getenv("MODERATION_MODEL", "omni-moderation-latest")
 
 # ============================================
 # STRIPE (H-6 fix: no hardcoded price IDs)
