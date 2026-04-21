@@ -28,14 +28,16 @@ test.describe('Financial — Late cancel fee (persistence gap)', () => {
   let bookingId: string;
 
   test.beforeEach(async () => {
-    await resetPolicy({ hours_before: 24, fee_percentage: 50, max_reschedules_per_booking: 1 });
+    // hours_before=48 makes this deterministic regardless of clock/tz:
+    // booking seeded ~10h in the future stays inside the late window even
+    // when local/UTC clock math drifts across tz boundaries.
+    await resetPolicy({ hours_before: 48, fee_percentage: 50, max_reschedules_per_booking: 1 });
     const clientId = await ensureHomeownerClientLink(HOMEOWNER_EMAIL);
-    // Booking ~10h from now — inside 24h window, late-cancel territory.
     const soon = new Date(Date.now() + 10 * 60 * 60 * 1000);
     bookingId = await createTestBooking({
       clientId,
       scheduledDate: soon.toISOString().split('T')[0],
-      scheduledStart: `${String(soon.getHours()).padStart(2, '0')}:00:00`,
+      scheduledStart: `${String(soon.getUTCHours()).padStart(2, '0')}:00:00`,
       status: 'scheduled',
       quotedPrice: 180,
     });
