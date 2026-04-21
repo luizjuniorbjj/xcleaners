@@ -294,6 +294,106 @@ Luiz (Opção 2 só webchat público). Clawtobusiness tem `telegram.py`
 | HIGH | 2 (business_channels multi-tenant + Evolution HTTPS) | ~4 dias |
 | MEDIUM | 6 (auth ext, Fernet, audit, conversations.business_id, race lock, chat_pipeline helper) | ~15-20h |
 | LOW | 9 (polish, features extras) | ~20-25h |
+| STAGING-FINDINGS | 5 (openai bump deployado, migrations faltando, Redis staging, Stripe webhook, merge) | ~8-12h |
 
 **Launch minimo pro cliente final:** fechar HIGH + MEDIUM-2 (Fernet) + MEDIUM-3 (audit).
 **Launch pleno multi-tenant:** todo HIGH + MEDIUM.
+
+---
+
+## STAGING FINDINGS — descobertos no deploy 2026-04-21 (env `staging` Railway)
+
+Durante o deploy staging da branch `feat/ai-fix-turbo` (Opcao A.3 — environment copy isolado), 5 achados novos. Um ja foi corrigido (fix-forward), quatro ficam pra sessao futura.
+
+### STAGING-1 · openai pin desatualizado (RESOLVIDO — commit `319d708`)
+
+**Origem:** deploy staging 2026-04-21. `requirements.txt` tinha `openai==1.0.0`, que NAO aceita `tools=` em `chat.completions.create()`. TODO fluxo AI Turbo (demo-chat, ai/chat, WhatsApp) retornava 503 com `TypeError`. Bug pre-existente, nunca exposto porque prod nunca havia executado os endpoints de IA.
+
+**Fix:** bump `openai>=1.35,<2.0` (commit `319d708` pushed, redeploy staging SUCCESS, smoke test OK).
+
+**Status:** ✅ RESOLVIDO no staging. Sera deployado em prod quando `feat/ai-fix-turbo` for merged.
+
+---
+
+### STAGING-2 · Migration 029 faltando — `conversations` + `messages`
+
+**Origem:** deploy staging 2026-04-21. As tabelas `conversations` e `messages` existem apenas em `database/schema.sql` (legacy ClaWin1Click), NAO foram portadas pra migrations versionadas. `pg_dump --schema-only` da prod confirmou: prod TAMBEM nao tem essas tabelas. Significa que o fluxo de chat (qualquer que use conversation persistence) nunca rodou em prod.
+
+**Fix:** criar `database/migrations/029_ai_chat_tables.sql` com:
+- `CREATE TABLE conversations` (com FK users, channel VARCHAR, last_message_at, followup fields)
+- `CREATE TABLE messages` (FK conversations, role CHECK, content_encrypted BYTEA)
+- Indices: idx_conversations_user, idx_conversations_last_message, idx_messages_conversation
+
+**Urgencia:** BLOQUEIA rollout de webchat publico/authenticated em prod. Sem essas tabelas, toda rota de IA 500.
+
+**Effort:** 30 min (copy-paste de `schema.sql` para migration + test).
+
+**Sprint sugerido:** 2 (ou hotfix imediato antes de merge pra prod).
+
+---
+
+### STAGING-3 · Gap arqueologico — migrations 005-010 nunca portadas do monolito clawtobusiness
+
+**Origem:** bootstrap staging via `pg_dump` da prod revelou que a tabela `businesses` (pilar do multi-tenant) vem de `clawtobusiness/database/migrations/005_multi_business_core.sql` — NAO esta no repo xcleaners. O xcleaners standalone assume schema pre-existente herdado do fork do monolito.
+
+**Impacto:** novo contributor que faca bootstrap limpo do xcleaners a partir de `schema.sql` + `migrations/011-028` nao consegue subir DB. Scripts de setup quebram.
+
+**Fix:** repatriar migrations 005-010 relevantes do clawtobusiness:
+- 005_multi_business_core.sql (businesses, business_members)
+- 006_add_business_id.sql (add business_id em tabelas legacy)
+- 007 humano takeover (se aplicavel ao xcleaners)
+- 010_marketing_landing_deploy.sql (se aplicavel)
+
+Renumerar como 001-004 no xcleaners (ja que 002-010 clawtobusiness nao sao todos relevantes aqui).
+
+**Effort:** 2-3h (analise de dependencias + renumeracao + test bootstrap limpo).
+
+**Sprint sugerido:** 3 (debito tecnico, nao bloqueia features).
+
+---
+
+### STAGING-4 · Redis service ausente no staging env
+
+**Origem:** clone de env Railway copiou apenas Postgres + cleanclaw-api. Staging nao tem Redis service, `REDIS_URL` aponta pra `redis://loca...` (localhost placeholder). App faz fallback gracioso pra in-memory rate limiter + OAuth state, mas:
+- Rate limit resetea a cada restart do pod
+- OAuth flow quebra se multi-replica (raro em staging)
+- Scheduler distributed lock nao funciona
+
+**Fix:** provisionar Redis service no env staging via Railway template. OU aceitar fallback e documentar.
+
+**Effort:** 15 min (Railway UI: Services → New → Redis template).
+
+**Sprint sugerido:** proxima sessao de staging use.
+
+---
+
+### STAGING-5 · Stripe webhook secret `placeholder` — precisa endpoint novo no dashboard
+
+**Origem:** override aplicado durante deploy staging (`STRIPE_WEBHOOK_SECRET=whsec_staging_placeholder_...`). Qualquer webhook Stripe real enviado pro staging vai ser rejeitado por assinatura invalida.
+
+**Fix quando for testar cobrancas no staging:**
+1. Stripe Dashboard → Developers → Webhooks → Add endpoint
+2. URL: `https://cleanclaw-api-staging-bde0.up.railway.app/api/v1/clean/stripe/webhook`
+3. Events: `payment_intent.succeeded`, `charge.succeeded`, `account.updated` (mesmos do prod)
+4. Copiar signing secret e setar em `STRIPE_WEBHOOK_SECRET` via `railway variables --set`
+
+**Effort:** 5 min (manual UI).
+
+**Sprint sugerido:** somente quando Luiz for testar billing flow no staging.
+
+---
+
+### STAGING-6 (meta) · Decisao de merge pra producao
+
+**Origem:** staging validado. `feat/ai-fix-turbo` HEAD=`319d708` funcional. Prod ainda roda codigo antigo (sem AI Turbo, sem webchat publico, sem openai bump).
+
+**Escopo da decisao:**
+1. Merge strategy: squash merge (1 commit consolidado) ou merge commit (preserva historia)
+2. PR review: @smith re-verify global do diff `main..feat/ai-fix-turbo`
+3. Smoke test prod pos-deploy: minimo `/health` + criar 1 lead via demo-chat em business real
+4. Rollback plan: `railway redeploy --deployment <prev-id>` ou `git revert` se falhar
+
+**Dependencias antes de merge:**
+- STAGING-2 (migration 029) — CRITICO, sem isso AI quebra em prod
+
+**Sprint sugerido:** proxima sessao do Luiz quando estiver pronto.
