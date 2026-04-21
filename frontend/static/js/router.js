@@ -118,7 +118,7 @@ window.CleanRouter = {
     this._updateNavActive();
     document.title=route.title+' \u2014 Xcleaners';
     try{
-      if(!this._loadedModules[route.module]){await this._loadScript('/cleaning/static/js/'+route.module+'?v=20');this._loadedModules[route.module]=true;}
+      if(!this._loadedModules[route.module]){await this._loadScript('/cleaning/static/js/'+route.module+'?v=21');this._loadedModules[route.module]=true;}
       const mn=this._getModuleName(route.module);
       if(window[mn]&&typeof window[mn].render==='function'){cv.innerHTML='';await window[mn].render(cv,params);}
       else cv.innerHTML='<div class="cc-placeholder"><h2>'+route.title+'</h2><p>Coming soon.</p></div>';

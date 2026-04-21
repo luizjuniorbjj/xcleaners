@@ -129,7 +129,11 @@ window.OwnerDashboard = {
   async _loadDashboard() {
     try {
       const resp = await CleanAPI.cleanGet('/dashboard');
-      this._data = (resp && resp.today_bookings_count !== undefined) ? resp : {
+      // Backend returns { revenue_this_month, bookings_today: {...}, active_clients, ... }.
+      // The legacy check for `today_bookings_count` silently fell back to zeros because
+      // that field was renamed to `bookings_today` object — now we just validate we got
+      // a non-empty object back from the API.
+      this._data = (resp && typeof resp === 'object' && Object.keys(resp).length > 0) ? resp : {
         today_bookings_count: 0, active_clients: 0, active_teams: 0,
         month_revenue: 0, revenue_this_month: 0, revenue_change_pct: 0,
         bookings_today: { total: 0, completed: 0 },
