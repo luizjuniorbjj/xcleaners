@@ -76,10 +76,13 @@ def _send_via_resend(
     html_body: str,
     text_body: str,
     reply_to: Optional[str] = None,
+    attachments: Optional[list] = None,
 ) -> dict:
     """
     Synchronous Resend send — runs in a thread executor to avoid blocking the event loop.
     Raises resend.exceptions.ResendError on API failure so the async caller can handle it.
+
+    attachments: list of {filename, content (base64 str), content_type} dicts.
     """
     params: dict = {
         "from": from_addr,
@@ -90,6 +93,8 @@ def _send_via_resend(
     }
     if reply_to:
         params["reply_to"] = reply_to
+    if attachments:
+        params["attachments"] = attachments
     return resend.Emails.send(params)
 
 
@@ -100,6 +105,7 @@ async def send_email(
     text_body: Optional[str] = None,
     category: str = "noreply",
     reply_to: Optional[str] = None,
+    attachments: Optional[list] = None,
 ) -> dict:
     """
     Send an email via Resend (non-blocking).
@@ -112,6 +118,10 @@ async def send_email(
         category: One of 'invite', 'booking', 'invoice', 'welcome', 'contact', 'noreply'.
                   Selects the semantically correct FROM address.
         reply_to: Optional Reply-To header (defaults to None, replies go to FROM)
+        attachments: Optional list of attachment dicts
+                     {filename, content (base64 str), content_type}.
+                     Use app.utils.ics_generator.build_ics_attachment_for_booking
+                     for .ics Google Calendar integration (AI Turbo Bloco 1.7).
 
     Returns: {sent: bool, id?: str, error?: str}
     """
@@ -130,7 +140,7 @@ async def send_email(
     try:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            None, _send_via_resend, from_addr, to, subject, html_body, text_body, reply_to,
+            None, _send_via_resend, from_addr, to, subject, html_body, text_body, reply_to, attachments,
         )
         email_id = result.get("id") if isinstance(result, dict) else None
         logger.info("[EMAIL] Sent to %s via Resend (id=%s, from=%s, subject=%r)",
@@ -150,9 +160,17 @@ async def send_email(
 # ============================================
 
 async def send_booking_confirmation(db: Database, booking_id: str) -> dict:
-    """Send booking confirmation email to the client."""
+    """
+    Send booking confirmation email to the client.
+
+    Fix 2026-04-20 (AI Turbo Bloco 1.7): schema real usa scheduled_start (nao
+    scheduled_time) + address_line1/city/state/zip (nao address). Sem esse fix
+    o SELECT crashava em runtime. Agora tambem anexa .ics (Google Calendar
+    integration — Opcao A).
+    """
     booking = await db.pool.fetchrow(
-        """SELECT b.scheduled_date, b.scheduled_time, b.address,
+        """SELECT b.scheduled_date, b.scheduled_start,
+                  b.address_line1, b.city, b.state, b.zip_code,
                   c.first_name, c.last_name, c.email,
                   s.name AS service_name,
                   t.name AS team_name
@@ -167,26 +185,53 @@ async def send_booking_confirmation(db: Database, booking_id: str) -> dict:
         return {"sent": False, "error": "Booking or client email not found"}
 
     client_name = f"{booking['first_name'] or ''} {booking['last_name'] or ''}".strip()
+    address_parts = [
+        booking["address_line1"],
+        booking["city"],
+        booking["state"],
+        booking["zip_code"],
+    ]
+    address_str = ", ".join(p for p in address_parts if p)
+    time_str = booking["scheduled_start"].strftime("%H:%M") if booking["scheduled_start"] else ""
+
     html = _template_booking_confirmation(
         client_name=client_name,
         service=booking["service_name"] or "Cleaning Service",
         date=str(booking["scheduled_date"]),
-        time=str(booking["scheduled_time"] or ""),
+        time=time_str,
         team_name=booking["team_name"] or "Our team",
-        address=booking["address"] or "",
+        address=address_str,
     )
+
+    # AI Turbo Bloco 1.7: anexar .ics pro cliente adicionar ao calendario dele
+    attachments = None
+    try:
+        from app.utils.ics_generator import build_ics_attachment_for_booking
+        ics_att = await build_ics_attachment_for_booking(db, booking_id)
+        if ics_att:
+            attachments = [ics_att]
+    except Exception as e:
+        logger.warning("[EMAIL] ICS generation failed for booking %s: %s", booking_id, e)
+        # Email ainda envia sem o .ics — degradacao graciosa
+
     return await send_email(
         to=booking["email"],
         subject="Your Booking is Confirmed!",
         html_body=html,
         category="booking",
+        attachments=attachments,
     )
 
 
 async def send_booking_reminder(db: Database, booking_id: str) -> dict:
-    """Send 24h booking reminder email to the client."""
+    """
+    Send 24h booking reminder email to the client.
+
+    Fix 2026-04-20 (AI Turbo Bloco 1.7): schema real usa scheduled_start (nao
+    scheduled_time). Agora tambem anexa .ics atualizado.
+    """
     booking = await db.pool.fetchrow(
-        """SELECT b.scheduled_date, b.scheduled_time,
+        """SELECT b.scheduled_date, b.scheduled_start,
                   c.first_name, c.last_name, c.email,
                   s.name AS service_name
            FROM cleaning_bookings b
@@ -199,17 +244,31 @@ async def send_booking_reminder(db: Database, booking_id: str) -> dict:
         return {"sent": False, "error": "Booking or client email not found"}
 
     client_name = f"{booking['first_name'] or ''} {booking['last_name'] or ''}".strip()
+    time_str = booking["scheduled_start"].strftime("%H:%M") if booking["scheduled_start"] else ""
+
     html = _template_booking_reminder(
         client_name=client_name,
         service=booking["service_name"] or "Cleaning Service",
         date=str(booking["scheduled_date"]),
-        time=str(booking["scheduled_time"] or ""),
+        time=time_str,
     )
+
+    # AI Turbo Bloco 1.7: anexar .ics atualizado (status pode ter mudado)
+    attachments = None
+    try:
+        from app.utils.ics_generator import build_ics_attachment_for_booking
+        ics_att = await build_ics_attachment_for_booking(db, booking_id)
+        if ics_att:
+            attachments = [ics_att]
+    except Exception as e:
+        logger.warning("[EMAIL] ICS generation failed for booking %s: %s", booking_id, e)
+
     return await send_email(
         to=booking["email"],
         subject="Reminder: Your Cleaning is Tomorrow!",
         html_body=html,
         category="booking",
+        attachments=attachments,
     )
 
 
