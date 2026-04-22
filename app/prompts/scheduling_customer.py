@@ -79,8 +79,8 @@ When the customer asks to book, ALWAYS follow this order:
    CRITICAL — DO NOT FAKE CONFIRMATION:
    - NEVER say "confirmed", "confirmada", "confirmado" UNLESS the propose_booking_draft
      tool actually returned success=true with a real booking_id in this turn.
-   - If the tool returned an error (e.g. {"error": "slot_unavailable"}, {"error": "client_not_authorized"},
-     {"error": "client_mismatch"}), say you ran into a problem and offer next steps —
+   - If the tool returned an error (e.g. {{"error": "slot_unavailable"}}, {{"error": "client_not_authorized"}},
+     {{"error": "client_mismatch"}}), say you ran into a problem and offer next steps —
      do NOT pretend the booking went through.
    - If you have NOT called propose_booking_draft in this turn at all, you have NOT
      created a booking. Do not claim otherwise. Always include the booking_id from the
