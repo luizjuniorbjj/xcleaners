@@ -36,24 +36,99 @@ router = APIRouter(
 # HELPERS
 # ============================================
 
+async def _load_channel_config(db: Database, business_id: str) -> Optional[dict]:
+    """Load WhatsApp channel config from business_channels for a business.
+
+    Returns dict with instance_name, webhook_secret, phone_number, status if row found
+    with status IN ('connected', 'connecting'). Returns None otherwise (caller falls back to env).
+    Try/except defensive — DB error → None + ERROR log (graceful degradation).
+
+    Story: XCL-HIGH-1.2 (per-business persistence with backwards-compat fallback).
+    """
+    try:
+        row = await db.pool.fetchrow(
+            """
+            SELECT instance_name, webhook_secret, phone_number, status
+            FROM business_channels
+            WHERE business_id = $1
+              AND channel_type = 'whatsapp'
+              AND status IN ('connected', 'connecting')
+            LIMIT 1
+            """,
+            business_id,
+        )
+        if not row:
+            return None
+        return {
+            "instance_name": row["instance_name"],
+            "webhook_secret": row["webhook_secret"],
+            "phone_number": row["phone_number"],
+            "status": row["status"],
+        }
+    except Exception as e:
+        logger.error("[CHANNELS] _load_channel_config failed for business_id=%s: %s", business_id, e)
+        return None
+
+
 async def _resolve_business(db: Database, slug: str) -> Optional[dict]:
-    """Load business by slug with WhatsApp config from env."""
+    """Load business by slug with WhatsApp config.
+
+    Config source controlled by env WHATSAPP_CONFIG_SOURCE (HIGH-1.2 feature flag):
+      - 'env' (default, legacy): env vars only (pre-HIGH-1.2 behavior)
+      - 'db':                    business_channels DB-first with env fallback
+
+    Fields api_url + api_key always come from env (Evolution server URL is global).
+    instance_name + webhook_secret from DB if WHATSAPP_CONFIG_SOURCE='db'
+    AND business_channels row exists with status IN ('connected', 'connecting').
+    Otherwise fallback to env with WARNING log.
+
+    Rationale (Decisão B Keymaker): two-phase rollout — deploy code with flag='env'
+    (zero-impact), then flip to 'db' in controlled window with instant rollback via
+    env flip (no redeploy needed).
+    """
     biz = await db.pool.fetchrow(
         "SELECT id, name, timezone FROM businesses WHERE slug = $1",
         slug,
     )
     if not biz:
         return None
+
+    business_id = str(biz["id"])
+
+    # Defaults from env (legacy, always-safe path)
+    instance_name = os.getenv("EVOLUTION_INSTANCE_NAME", "xcleaners")
+    webhook_secret = os.getenv("EVOLUTION_WEBHOOK_SECRET", "")
+    phone_number = None  # env-mode does not expose phone (legacy)
+
+    # Feature flag: WHATSAPP_CONFIG_SOURCE controls DB-first vs env-only
+    config_source = os.getenv("WHATSAPP_CONFIG_SOURCE", "env").lower()
+
+    if config_source == "db":
+        channel_cfg = await _load_channel_config(db, business_id)
+        if channel_cfg:
+            instance_name = channel_cfg["instance_name"]
+            webhook_secret = channel_cfg["webhook_secret"]
+            phone_number = channel_cfg["phone_number"]
+            logger.info(
+                "[CHANNELS] Loaded config from business_channels for slug=%s (instance=%s, status=%s)",
+                slug, instance_name, channel_cfg["status"],
+            )
+        else:
+            logger.warning(
+                "[CHANNELS] No business_channels row for slug=%s (or status invalid), falling back to env config",
+                slug,
+            )
+
     return {
-        "business_id": str(biz["id"]),
+        "business_id": business_id,
         "business_name": biz["name"],
         "timezone": biz["timezone"],
-        # MVP: env-based config. Per-business persistence via
-        # business_channels table fica no backlog.
         "api_url": os.getenv("EVOLUTION_API_URL", ""),
         "api_key": os.getenv("EVOLUTION_API_KEY", ""),
-        "instance_name": os.getenv("EVOLUTION_INSTANCE_NAME", "xcleaners"),
-        "webhook_secret": os.getenv("EVOLUTION_WEBHOOK_SECRET", ""),
+        "instance_name": instance_name,
+        "webhook_secret": webhook_secret,
+        # phone_number só populado em DB-mode; consumers atuais não usam, mas expor para futuro
+        "phone_number": phone_number,
     }
 
 
