@@ -14,6 +14,8 @@ Thumbs.db
 .playwright-mcp/
 *.png
 *.jpg
+!frontend/**/*.png
+!frontend/**/*.jpg
 venv/
 .venv/
 .vscode/
