@@ -172,10 +172,25 @@ async def _run_anthropic_tools(
                     json.dumps(block.input)[:200],
                 )
                 result = await execute_tool(block.name, block.input, business_id, db, auth_context)
+                # Serialize dict result to JSON string (Anthropic API accepts both
+                # string and list-of-blocks, but JSON string is the safe default —
+                # passing raw dict has been observed to confuse the LLM downstream).
+                content_str = json.dumps(result, default=str) if not isinstance(result, str) else result
+                # Log result so failed tool calls are visible in Railway logs.
+                if isinstance(result, dict) and result.get("error"):
+                    logger.warning(
+                        "[AI_SCHED] Tool result [%d] %s ERROR: %s",
+                        iteration + 1, block.name, content_str[:300],
+                    )
+                else:
+                    logger.info(
+                        "[AI_SCHED] Tool result [%d] %s OK: %s",
+                        iteration + 1, block.name, content_str[:300],
+                    )
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
-                    "content": result,
+                    "content": content_str,
                 })
 
         if not tool_results:
@@ -243,11 +258,25 @@ async def _run_openai_tools(
                 args = {}
 
             result = await execute_tool(func.name, args, business_id, db, auth_context)
+            # OpenAI tool messages REQUIRE content as a string. Passing a dict
+            # raw causes the SDK to coerce via repr(), which renders {'error': ...}
+            # in a format the LLM may misinterpret as success.
+            content_str = json.dumps(result, default=str) if not isinstance(result, str) else result
+            if isinstance(result, dict) and result.get("error"):
+                logger.warning(
+                    "[AI_SCHED] Tool result [%d] %s ERROR: %s",
+                    iteration + 1, func.name, content_str[:300],
+                )
+            else:
+                logger.info(
+                    "[AI_SCHED] Tool result [%d] %s OK: %s",
+                    iteration + 1, func.name, content_str[:300],
+                )
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
-                "content": result,
+                "content": content_str,
             })
 
     logger.warning("[AI_SCHED] Max tool iterations reached (%d)", MAX_TOOL_ITERATIONS)
