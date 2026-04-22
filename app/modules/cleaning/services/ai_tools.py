@@ -28,6 +28,59 @@ from app.modules.cleaning.services.availability_service import is_slot_available
 logger = logging.getLogger("xcleaners.ai_tools")
 
 
+async def _pick_available_team(
+    db: Database,
+    business_id: str,
+    scheduled_date: str,
+    scheduled_start: str,
+    duration_minutes: Optional[int] = None,
+    preferred_team_id: Optional[str] = None,
+) -> Optional[str]:
+    """Pick a team for an AI-created booking.
+
+    Strategy: rank active teams by (preferred match, no slot conflict, least
+    jobs today). Returns team UUID str, or None if no team fits — in which
+    case the booking stays unassigned and the owner assigns it manually.
+    """
+    duration_s = str(duration_minutes or 60)
+    rows = await db.pool.fetch(
+        """
+        SELECT t.id,
+               t.max_daily_jobs,
+               COALESCE((
+                   SELECT COUNT(*) FROM cleaning_bookings b
+                   WHERE b.team_id = t.id
+                     AND b.scheduled_date = $2::date
+                     AND b.status NOT IN ('cancelled','no_show')
+               ), 0) AS jobs_today,
+               COALESCE((
+                   SELECT COUNT(*) FROM cleaning_bookings b
+                   WHERE b.team_id = t.id
+                     AND b.scheduled_date = $2::date
+                     AND b.status NOT IN ('cancelled','no_show')
+                     AND b.scheduled_start < ($3::time + ($4 || ' minutes')::interval)
+                     AND COALESCE(b.scheduled_end, b.scheduled_start + ($4 || ' minutes')::interval) > $3::time
+               ), 0) AS slot_conflicts
+        FROM cleaning_teams t
+        WHERE t.business_id = $1 AND t.is_active = true
+        ORDER BY
+            (CASE WHEN $5::uuid IS NOT NULL AND t.id = $5::uuid THEN 0 ELSE 1 END),
+            jobs_today ASC,
+            t.name
+        """,
+        business_id,
+        scheduled_date,
+        scheduled_start,
+        duration_s,
+        preferred_team_id,
+    )
+    for r in rows:
+        max_jobs = r["max_daily_jobs"] or 6
+        if r["slot_conflicts"] == 0 and r["jobs_today"] < max_jobs:
+            return str(r["id"])
+    return None
+
+
 # ============================================
 # TOOL DEFINITIONS (Anthropic tool_use format)
 # ============================================
@@ -512,7 +565,7 @@ async def _get_team_availability(
             t.id,
             t.name,
             t.max_daily_jobs,
-            t.status,
+            t.is_active,
             (
                 SELECT COUNT(*)
                 FROM cleaning_bookings b
@@ -528,7 +581,7 @@ async def _get_team_availability(
             ) AS active_members
         FROM cleaning_teams t
         WHERE t.business_id = $1
-          AND t.status = 'active'
+          AND t.is_active = true
         ORDER BY t.name
         """,
         business_id,
@@ -542,7 +595,7 @@ async def _get_team_availability(
         result.append({
             "team_id": str(team["id"]),
             "team_name": team["name"],
-            "status": team["status"],
+            "status": "active" if team["is_active"] else "inactive",
             "active_members": team["active_members"],
             "jobs_today": jobs,
             "max_daily_jobs": max_jobs,
@@ -1072,6 +1125,28 @@ async def _propose_booking_draft(
             "conflicts": avail["conflicts"],
         }
 
+    # AUTO-ASSIGN TEAM: pick active team with no slot conflict.
+    # Falls back to None (unassigned) if no team fits — owner reassigns manually.
+    # preferred_team_id lookup from cleaning_client_schedules is backlog.
+    auto_team_id = params.get("team_id") or await _pick_available_team(
+        db,
+        business_id=business_id,
+        scheduled_date=params["scheduled_date"],
+        scheduled_start=params["scheduled_start"],
+        duration_minutes=params.get("duration_minutes"),
+        preferred_team_id=None,
+    )
+    if auto_team_id:
+        logger.info(
+            "[AI_TOOLS] Auto-assigned team %s to booking (business=%s, slot=%s %s)",
+            auto_team_id, business_id, params["scheduled_date"], params["scheduled_start"],
+        )
+    else:
+        logger.warning(
+            "[AI_TOOLS] No team auto-assigned (business=%s, slot=%s %s) — booking stays unassigned",
+            business_id, params["scheduled_date"], params["scheduled_start"],
+        )
+
     try:
         # AUTO-CONFIRM: availability already verified above (gate at line ~1059).
         # AI cria booking direto como "scheduled" (não draft). Owner não precisa
@@ -1091,6 +1166,7 @@ async def _propose_booking_draft(
             location_id=params.get("location_id"),
             source="ai_chat",
             status="scheduled",
+            team_id=auto_team_id,
             special_instructions=params.get("special_instructions"),
         )
         breakdown = result["breakdown"]
