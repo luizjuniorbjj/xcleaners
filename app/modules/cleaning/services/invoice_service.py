@@ -368,6 +368,19 @@ async def mark_paid(
            RETURNING *""",
         invoice_id, business_id, new_paid, new_status, method, reference,
     )
+
+    # Email notifications when fully paid (best-effort)
+    if row and new_status == "paid":
+        try:
+            from app.modules.cleaning.services.email_service import (
+                send_payment_received,
+                send_owner_payment_received,
+            )
+            await send_payment_received(db, invoice_id)
+            await send_owner_payment_received(db, invoice_id)
+        except Exception as e:
+            logger.warning("[INVOICE] mark_paid email notify failed: %s", e)
+
     return _invoice_to_dict(row) if row else {"error": "Update failed", "status_code": 500}
 
 

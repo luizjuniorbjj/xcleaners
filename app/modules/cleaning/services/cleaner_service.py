@@ -367,6 +367,17 @@ async def check_out(
             "cleaner_service: earnings calc failed for booking=%s", booking_id,
         )
 
+    # Email notifications on completion (best-effort)
+    try:
+        from app.modules.cleaning.services.email_service import (
+            send_booking_completed,
+            send_owner_booking_completed,
+        )
+        await send_booking_completed(db, str(booking_id))
+        await send_owner_booking_completed(db, str(booking_id))
+    except Exception as exc:
+        logger.warning("cleaner_service: completion email failed for booking=%s: %s", booking_id, exc)
+
     return {
         "success": True,
         "booking_id": str(booking_id),

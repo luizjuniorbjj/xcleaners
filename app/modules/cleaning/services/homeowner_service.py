@@ -313,6 +313,17 @@ async def reschedule_booking(
     except Exception as e:
         logger.warning("[HOMEOWNER] SSE publish failed: %s", e)
 
+    # Email notifications (best-effort, never block return)
+    try:
+        from app.modules.cleaning.services.email_service import (
+            send_booking_rescheduled,
+            send_owner_booking_rescheduled,
+        )
+        await send_booking_rescheduled(db, str(booking_id), old_date, new_date, new_time)
+        await send_owner_booking_rescheduled(db, str(booking_id), old_date, new_date, new_time)
+    except Exception as e:
+        logger.warning("[HOMEOWNER] reschedule email notify failed: %s", e)
+
     return {
         "success": True,
         "booking_id": str(booking_id),
@@ -405,6 +416,17 @@ async def cancel_booking(
         })
     except Exception as e:
         logger.warning("[HOMEOWNER] SSE publish failed: %s", e)
+
+    # Email notifications (best-effort)
+    try:
+        from app.modules.cleaning.services.email_service import (
+            send_booking_cancelled,
+            send_owner_booking_cancelled,
+        )
+        await send_booking_cancelled(db, str(booking_id), reason=reason or "Client cancelled")
+        await send_owner_booking_cancelled(db, str(booking_id), reason=reason or "Client cancelled", cancelled_by="client")
+    except Exception as e:
+        logger.warning("[HOMEOWNER] cancel email notify failed: %s", e)
 
     return {
         "success": True,

@@ -1096,7 +1096,20 @@ async def _propose_booking_draft(
         breakdown = result["breakdown"]
         booking_id = result["booking_id"]
 
-        # Notify both client and owner — best-effort, never block return.
+        # Multi-channel notify (email + WhatsApp/SMS) — best-effort, never block.
+        try:
+            from app.modules.cleaning.services.email_service import (
+                send_booking_confirmation,
+                send_owner_new_booking,
+            )
+            # Email to client (booking confirmation)
+            await send_booking_confirmation(db, str(booking_id))
+            # Email to owner (new booking alert)
+            await send_owner_new_booking(db, str(booking_id))
+        except Exception as e:
+            logger.warning("[AI_TOOLS] email notification failed (booking still created): %s", e)
+
+        # Also fire WhatsApp/SMS via channel notification (graceful chains)
         try:
             from app.modules.cleaning.services.notification_service import send_notification
             notify_data = {
@@ -1109,16 +1122,11 @@ async def _propose_booking_draft(
                 "final_amount": float(breakdown["final_amount"]),
                 "source": "ai_chat",
             }
-            # Client notification
             await send_notification(
-                db=db,
-                business_id=business_id,
-                target_type="client",
-                target_id=params["client_id"],
-                template_key="booking_confirmation",
+                db=db, business_id=business_id, target_type="client",
+                target_id=params["client_id"], template_key="booking_confirmation",
                 data=notify_data,
             )
-            # Owner notification — find owner user_id of this business
             owner_row = await db.pool.fetchrow(
                 """SELECT user_id FROM cleaning_user_roles
                    WHERE business_id = $1 AND role = 'owner' AND is_active = true
@@ -1127,15 +1135,12 @@ async def _propose_booking_draft(
             )
             if owner_row:
                 await send_notification(
-                    db=db,
-                    business_id=business_id,
-                    target_type="owner",
-                    target_id=str(owner_row["user_id"]),
-                    template_key="booking_confirmation",
+                    db=db, business_id=business_id, target_type="owner",
+                    target_id=str(owner_row["user_id"]), template_key="booking_confirmation",
                     data=notify_data,
                 )
         except Exception as e:
-            logger.warning("[AI_TOOLS] booking notification failed (booking still created): %s", e)
+            logger.warning("[AI_TOOLS] channel notification failed (booking still created): %s", e)
 
         return {
             "success": True,

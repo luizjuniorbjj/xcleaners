@@ -1193,6 +1193,142 @@ def _template_welcome(
 
 
 # ============================================
+# BOOKING COMPLETED (cleaning finished)
+# ============================================
+
+async def send_booking_completed(db: Database, booking_id: str) -> dict:
+    """Email client after cleaning is marked completed."""
+    b = await db.pool.fetchrow(
+        """SELECT b.scheduled_date, b.scheduled_start,
+                  c.first_name, c.last_name, c.email,
+                  s.name AS service_name,
+                  t.name AS team_name
+           FROM cleaning_bookings b
+           JOIN cleaning_clients c ON c.id = b.client_id
+           LEFT JOIN cleaning_services s ON s.id = b.service_id
+           LEFT JOIN cleaning_teams t ON t.id = b.team_id
+           WHERE b.id = $1""",
+        booking_id,
+    )
+    if not b or not b["email"]:
+        return {"sent": False, "error": "Booking or client email not found"}
+
+    client_name = f"{b['first_name'] or ''} {b['last_name'] or ''}".strip() or "Customer"
+    content = f"""
+<h2 style="margin:0 0 16px;color:#333;font-size:20px;">Service Completed ✨</h2>
+<p style="color:#555;font-size:15px;line-height:1.6;">Hi {client_name},</p>
+<p style="color:#555;font-size:15px;line-height:1.6;">Your {b['service_name'] or 'cleaning'} service on {b['scheduled_date']} has been completed by {b['team_name'] or 'our team'}. We hope you love the result!</p>
+<p style="color:#555;font-size:15px;line-height:1.6;">If you have any feedback or need anything, please reply to this email.</p>
+"""
+    return await send_email(
+        to=b["email"],
+        subject="Service Completed — Thank You!",
+        html_body=_base_template("Service Completed", content),
+        category="booking",
+    )
+
+
+async def send_owner_booking_completed(db: Database, booking_id: str) -> dict:
+    """Alert owner when a cleaning is marked completed."""
+    b = await db.pool.fetchrow(
+        """SELECT b.business_id, b.scheduled_date, b.scheduled_start,
+                  c.first_name || ' ' || COALESCE(c.last_name, '') AS client_name,
+                  s.name AS service_name,
+                  t.name AS team_name
+           FROM cleaning_bookings b
+           JOIN cleaning_clients c ON c.id = b.client_id
+           LEFT JOIN cleaning_services s ON s.id = b.service_id
+           LEFT JOIN cleaning_teams t ON t.id = b.team_id
+           WHERE b.id = $1""",
+        booking_id,
+    )
+    if not b:
+        return {"sent": False, "error": "Booking not found"}
+
+    owner_emails = await _get_owner_notification_emails(db, str(b["business_id"]))
+    if not owner_emails:
+        return {"sent": False, "error": "No owner emails"}
+
+    content = f"""
+<h2 style="margin:0 0 16px;color:#333;font-size:20px;">✅ Service completed</h2>
+<p style="color:#555;font-size:15px;line-height:1.6;"><strong>{b['client_name'].strip()}</strong> — {b['service_name'] or 'Cleaning'} on {b['scheduled_date']} was completed by {b['team_name'] or 'team'}.</p>
+"""
+    results = []
+    for em in owner_emails:
+        r = await send_email(
+            to=em, subject=f"Service completed — {b['client_name'].strip()}",
+            html_body=_base_template("Service Completed", content),
+            category="owner_alert",
+        )
+        results.append(r)
+    return {"sent": any(r.get("sent") for r in results), "recipients": len(owner_emails)}
+
+
+# ============================================
+# PAYMENT RECEIVED
+# ============================================
+
+async def send_payment_received(db: Database, invoice_id: str) -> dict:
+    """Email client receipt after payment is confirmed."""
+    inv = await db.pool.fetchrow(
+        """SELECT i.invoice_number, i.total_amount, i.paid_at,
+                  c.first_name, c.last_name, c.email
+           FROM cleaning_invoices i
+           JOIN cleaning_clients c ON c.id = i.client_id
+           WHERE i.id = $1""",
+        invoice_id,
+    )
+    if not inv or not inv["email"]:
+        return {"sent": False, "error": "Invoice or client email not found"}
+
+    client_name = f"{inv['first_name'] or ''} {inv['last_name'] or ''}".strip() or "Customer"
+    content = f"""
+<h2 style="margin:0 0 16px;color:#333;font-size:20px;">Payment Received ✅</h2>
+<p style="color:#555;font-size:15px;line-height:1.6;">Hi {client_name},</p>
+<p style="color:#555;font-size:15px;line-height:1.6;">We received your payment for invoice <strong>{inv['invoice_number']}</strong>. Total: <strong>${float(inv['total_amount']):.2f}</strong>.</p>
+<p style="color:#555;font-size:15px;line-height:1.6;">Thank you! This email serves as your receipt.</p>
+"""
+    return await send_email(
+        to=inv["email"],
+        subject=f"Payment received — Invoice {inv['invoice_number']}",
+        html_body=_base_template("Payment Received", content),
+        category="invoice",
+    )
+
+
+async def send_owner_payment_received(db: Database, invoice_id: str) -> dict:
+    """Alert owner when payment is confirmed."""
+    inv = await db.pool.fetchrow(
+        """SELECT i.business_id, i.invoice_number, i.total_amount,
+                  c.first_name || ' ' || COALESCE(c.last_name, '') AS client_name
+           FROM cleaning_invoices i
+           JOIN cleaning_clients c ON c.id = i.client_id
+           WHERE i.id = $1""",
+        invoice_id,
+    )
+    if not inv:
+        return {"sent": False, "error": "Invoice not found"}
+
+    owner_emails = await _get_owner_notification_emails(db, str(inv["business_id"]))
+    if not owner_emails:
+        return {"sent": False, "error": "No owner emails"}
+
+    content = f"""
+<h2 style="margin:0 0 16px;color:#333;font-size:20px;">💰 Payment received</h2>
+<p style="color:#555;font-size:15px;line-height:1.6;"><strong>{inv['client_name'].strip()}</strong> paid invoice <strong>{inv['invoice_number']}</strong> — ${float(inv['total_amount']):.2f}.</p>
+"""
+    results = []
+    for em in owner_emails:
+        r = await send_email(
+            to=em, subject=f"💰 Payment received — {inv['invoice_number']}",
+            html_body=_base_template("Payment Received", content),
+            category="owner_alert",
+        )
+        results.append(r)
+    return {"sent": any(r.get("sent") for r in results), "recipients": len(owner_emails)}
+
+
+# ============================================
 # HELPERS
 # ============================================
 
