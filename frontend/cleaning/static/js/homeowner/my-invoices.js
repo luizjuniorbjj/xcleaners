@@ -131,11 +131,29 @@ window.HomeownerMyInvoices = {
         </div>
       `;
 
-      // Pay button listeners
+      // Pay button listeners — create Stripe PaymentLink and redirect
       listEl.querySelectorAll('.cc-btn-pay').forEach(btn => {
-        btn.addEventListener('click', () => {
-          // In production, this would open a Stripe payment link
-          Xcleaners.showToast('Online payment coming soon. Contact your cleaning service for payment options.', 'info');
+        btn.addEventListener('click', async () => {
+          const invoiceId = btn.dataset.invoiceId;
+          if (!invoiceId) return;
+          btn.disabled = true;
+          const origText = btn.textContent;
+          btn.textContent = 'Loading…';
+          try {
+            const slug = CleanAPI._slug;
+            const resp = await CleanAPI.request('POST', `/api/v1/clean/${slug}/my-invoices/${invoiceId}/payment-link`);
+            if (resp && resp.payment_url) {
+              window.location.href = resp.payment_url;
+              return;
+            }
+            Xcleaners.showToast('Could not generate payment link. Please try again or contact your cleaning service.', 'error');
+          } catch (err) {
+            const msg = (err && err.detail) || 'Could not generate payment link. Please try again.';
+            Xcleaners.showToast(msg, 'error');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+          }
         });
       });
 

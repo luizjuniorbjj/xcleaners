@@ -348,6 +348,44 @@ async def my_invoices_route(
 
 
 # ============================================
+# POST /my-invoices/{id}/payment-link
+# ============================================
+
+@router.post("/my-invoices/{invoice_id}/payment-link")
+async def my_invoice_payment_link_route(
+    slug: str,
+    invoice_id: str,
+    user: dict = Depends(require_role("homeowner")),
+    db: Database = Depends(get_db),
+):
+    """Create Stripe payment link for the invoice (homeowner self-service).
+
+    Validates that the invoice belongs to the authenticated client before
+    generating the link. Reuses create_payment_link service.
+    """
+    client_id = await _resolve_client_id(user, db)
+
+    # Verify invoice belongs to this client
+    row = await db.pool.fetchrow(
+        """SELECT id FROM cleaning_invoices
+           WHERE id = $1 AND business_id = $2 AND client_id = $3""",
+        invoice_id, user["business_id"], client_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Reuse owner-side service (access already validated above)
+    from app.modules.cleaning.services.invoice_service import create_payment_link
+    result = await create_payment_link(db, user["business_id"], invoice_id)
+    if result.get("error"):
+        raise HTTPException(
+            status_code=result.get("status_code", 400),
+            detail=result["error"],
+        )
+    return result
+
+
+# ============================================
 # GET /my-preferences
 # ============================================
 

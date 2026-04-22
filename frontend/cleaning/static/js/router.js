@@ -142,7 +142,7 @@ window.CleanRouter = {
       const mobileTitle=document.getElementById('mobile-page-title');
       if(mobileTitle)mobileTitle.textContent=route.title;
     try{
-      if(!this._loadedModules[route.module]){await this._loadScript('/cleaning/static/js/'+route.module+'?v=23');this._loadedModules[route.module]=true;}
+      if(!this._loadedModules[route.module]){await this._loadScript('/cleaning/static/js/'+route.module+'?v=24');this._loadedModules[route.module]=true;}
       const mn=this._getModuleName(route.module);
       if(window[mn]&&typeof window[mn].render==='function'){cv.innerHTML='';await window[mn].render(cv,params);}
       else cv.innerHTML='<div class="cc-placeholder"><h2>'+route.title+'</h2><p>Coming soon.</p></div>';
