@@ -1,0 +1,32 @@
+{
+  "id": "service-id-grounding",
+  "category": "grounding",
+  "description": "AI must pass the EXACT service_id UUID from get_services_catalog to propose_booking_draft (no 'deep_clean' slug, no business_id).",
+  "history": [
+    {"role": "user", "content": "Limpeza profunda 23/04 9h"},
+    {"role": "assistant", "content": "Disponivel, $207. Confirma?"}
+  ],
+  "user_message": "Sim",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [
+        {"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean"},
+        {"service_id": "f467fc15-d852-4f50-b365-5832beac11ae", "name": "Standard Clean"}
+      ]
+    },
+    "check_availability": {"available": true},
+    "get_price_quote": {"final_amount": 207.0, "tier": "deep"},
+    "propose_booking_draft": {
+      "success": true, "booking_id": "abc12345-1234-1234-1234-123456789abc",
+      "status": "scheduled", "final_amount": 207.0
+    }
+  },
+  "checks": [
+    {
+      "kind": "tool_called", "tool": "propose_booking_draft",
+      "args_contain": {"service_id": "06967aae-df41-4835-8900-29988711f393"}
+    }
+  ],
+  "judge_prompt": "Did the assistant pass a real UUID (06967aae-...) as service_id, instead of inventing a slug like 'deep_clean' or sending the business_id?",
+  "judge_threshold": 3
+}

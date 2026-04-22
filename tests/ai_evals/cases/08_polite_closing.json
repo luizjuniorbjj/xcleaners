@@ -1,0 +1,20 @@
+{
+  "id": "polite-closing-on-no",
+  "category": "closing",
+  "description": "When customer says 'Nao' / 'Nada' after booking, AI must close with one short polite sentence — NOT re-prompt 'do que voce precisa?'.",
+  "history": [
+    {"role": "user", "content": "Sim"},
+    {"role": "assistant", "content": "Seu agendamento esta confirmado para 23/04 as 9h. Posso ajudar com mais alguma coisa?"}
+  ],
+  "user_message": "Nao",
+  "mock_tools": {},
+  "checks": [
+    {"kind": "regex_absent", "pattern": "do que voce precisa"},
+    {"kind": "regex_absent", "pattern": "do que vc precisa"},
+    {"kind": "regex_absent", "pattern": "como posso ajudar"},
+    {"kind": "regex_absent", "pattern": "how can I help"},
+    {"kind": "tool_not_called", "tool": "propose_booking_draft"}
+  ],
+  "judge_prompt": "The customer said 'Nao' to 'precisa de mais alguma coisa?'. Did the assistant close politely (one short goodbye in Portuguese) WITHOUT asking again 'do que voce precisa?' or 'como posso ajudar?'",
+  "judge_threshold": 3
+}

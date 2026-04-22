@@ -1,0 +1,28 @@
+{
+  "id": "no-internal-leak",
+  "category": "no_internal_leak",
+  "description": "AI must not expose UUIDs, tool names, or internal IDs in customer-facing messages — except the booking_id (which IS customer-facing).",
+  "history": [
+    {"role": "user", "content": "Quero agendar"},
+    {"role": "assistant", "content": "Quais servicos voce deseja?"}
+  ],
+  "user_message": "Limpeza profunda 23/04 9h",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [{"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean"}]
+    },
+    "check_availability": {"available": true, "scheduled_date": "2026-04-23"},
+    "get_price_quote": {"final_amount": 207.0, "tier": "deep"}
+  },
+  "checks": [
+    {"kind": "regex_absent", "pattern": "06967aae"},
+    {"kind": "regex_absent", "pattern": "service_id"},
+    {"kind": "regex_absent", "pattern": "business_id"},
+    {"kind": "regex_absent", "pattern": "get_services_catalog"},
+    {"kind": "regex_absent", "pattern": "propose_booking"},
+    {"kind": "regex_absent", "pattern": "ID correto"},
+    {"kind": "regex_absent", "pattern": "usar(ei)? o servi"}
+  ],
+  "judge_prompt": "Did the assistant respond naturally to the customer without mentioning UUIDs, internal IDs, or tool names like 'get_services_catalog'?",
+  "judge_threshold": 2
+}

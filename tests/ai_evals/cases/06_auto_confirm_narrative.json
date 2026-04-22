@@ -1,0 +1,36 @@
+{
+  "id": "auto-confirm-narrative",
+  "category": "narrative",
+  "description": "After propose_booking_draft success, AI must NOT say 'owner will confirm' — booking IS already confirmed.",
+  "history": [
+    {"role": "user", "content": "Limpeza profunda 23/04 9h"},
+    {"role": "assistant", "content": "Disponivel, $207. Confirma?"}
+  ],
+  "user_message": "Sim",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [{"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean"}]
+    },
+    "check_availability": {"available": true},
+    "get_price_quote": {"final_amount": 207.0, "tier": "deep"},
+    "propose_booking_draft": {
+      "success": true,
+      "booking_id": "abc12345-1234-1234-1234-123456789abc",
+      "status": "scheduled",
+      "scheduled_date": "2026-04-23",
+      "scheduled_start": "09:00",
+      "final_amount": 207.0,
+      "message": "Booking confirmed and scheduled. Confirmation sent to customer and owner."
+    }
+  },
+  "checks": [
+    {"kind": "regex_absent", "pattern": "proprietario.*confirma"},
+    {"kind": "regex_absent", "pattern": "propriet[áa]rio.*confirmar"},
+    {"kind": "regex_absent", "pattern": "owner will confirm"},
+    {"kind": "regex_absent", "pattern": "registrado.*owner"},
+    {"kind": "regex_absent", "pattern": "pending.*approval"},
+    {"kind": "regex_present", "pattern": "confirmad[oa]|confirmed"}
+  ],
+  "judge_prompt": "Did the assistant tell the customer the booking is CONFIRMED, without saying anything like 'owner will confirm shortly' or 'pending approval'?",
+  "judge_threshold": 2
+}

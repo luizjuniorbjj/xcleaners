@@ -1,0 +1,34 @@
+{
+  "id": "pricing-tier-deep",
+  "category": "tier_mapping",
+  "description": "When customer asks for 'Limpeza Profunda' AI must call get_price_quote with tier='deep' and quote $207 (not $115).",
+  "history": [
+    {"role": "user", "content": "Quero agendar"},
+    {"role": "assistant", "content": "Temos Deep Clean e Standard Clean. Qual deseja?"}
+  ],
+  "user_message": "Limpeza profunda 23/04 9h",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [
+        {"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean", "tier": null},
+        {"service_id": "f467fc15-d852-4f50-b365-5832beac11ae", "name": "Standard Clean", "tier": null}
+      ]
+    },
+    "check_availability": {
+      "available": true, "scheduled_date": "2026-04-23", "scheduled_start": "09:00",
+      "scheduled_end": "11:00", "duration_minutes": 120, "team_id": null, "conflicts": []
+    },
+    "get_price_quote": {
+      "final_amount": 207.0, "subtotal": 207.0, "tier": "deep", "tier_multiplier": 1.8,
+      "discount_amount": 0, "tax_amount": 0, "extras": []
+    }
+  },
+  "checks": [
+    {"kind": "tool_called", "tool": "get_price_quote", "args_contain": {"tier": "deep"}},
+    {"kind": "regex_present", "pattern": "\\$\\s?207"},
+    {"kind": "regex_absent", "pattern": "R\\$"},
+    {"kind": "regex_absent", "pattern": "\\$\\s?115"}
+  ],
+  "judge_prompt": "Did the assistant correctly quote $207 for Deep Clean (in USD, not R$), and not invent a Basic price like $115?",
+  "judge_threshold": 2
+}

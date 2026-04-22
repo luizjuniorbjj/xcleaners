@@ -1,0 +1,30 @@
+{
+  "id": "pricing-consistency-no-flip",
+  "category": "tier_mapping",
+  "description": "Once AI quotes $207 for Deep Clean, it must NOT change the price between turns (same service/extras/frequency).",
+  "history": [
+    {"role": "user", "content": "Limpeza profunda 23/04 9h"},
+    {"role": "assistant", "content": "Disponivel. O preco para Limpeza Profunda e $207. Confirma?"}
+  ],
+  "user_message": "Sim",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [{"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean"}]
+    },
+    "get_price_quote": {
+      "final_amount": 207.0, "subtotal": 207.0, "tier": "deep", "tier_multiplier": 1.8
+    },
+    "check_availability": {"available": true},
+    "propose_booking_draft": {
+      "success": true, "booking_id": "abc12345-1234-1234-1234-123456789abc",
+      "status": "scheduled", "final_amount": 207.0
+    }
+  },
+  "checks": [
+    {"kind": "regex_absent", "pattern": "\\$\\s?115"},
+    {"kind": "regex_absent", "pattern": "R\\$"},
+    {"kind": "tool_called", "tool": "propose_booking_draft"}
+  ],
+  "judge_prompt": "Did the assistant proceed to create the booking without changing the price from $207 to anything else?",
+  "judge_threshold": 2
+}

@@ -1,0 +1,30 @@
+{
+  "id": "no-double-confirm",
+  "category": "no_double_confirm",
+  "description": "After AI quoted the price and customer says Sim, AI must call propose_booking_draft directly — NOT ask 'confirma?' again.",
+  "history": [
+    {"role": "user", "content": "Limpeza profunda 23/04 9h"},
+    {"role": "assistant", "content": "Disponivel, $207. Deseja confirmar?"}
+  ],
+  "user_message": "Sim",
+  "mock_tools": {
+    "get_services_catalog": {
+      "services": [{"service_id": "06967aae-df41-4835-8900-29988711f393", "name": "Deep Clean"}]
+    },
+    "check_availability": {"available": true},
+    "get_price_quote": {"final_amount": 207.0, "tier": "deep"},
+    "propose_booking_draft": {
+      "success": true, "booking_id": "abc12345-1234-1234-1234-123456789abc",
+      "status": "scheduled", "final_amount": 207.0,
+      "scheduled_date": "2026-04-23", "scheduled_start": "09:00"
+    }
+  },
+  "checks": [
+    {"kind": "tool_called", "tool": "propose_booking_draft"},
+    {"kind": "regex_absent", "pattern": "deseja confirmar"},
+    {"kind": "regex_absent", "pattern": "voce confirma"},
+    {"kind": "regex_absent", "pattern": "shall I confirm"}
+  ],
+  "judge_prompt": "Customer said 'Sim' after a price quote. Did the assistant proceed to BOOK without asking another 'deseja confirmar?' (which would be a redundant double-confirm)?",
+  "judge_threshold": 2
+}
