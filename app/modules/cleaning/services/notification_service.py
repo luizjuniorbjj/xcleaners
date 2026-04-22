@@ -151,10 +151,12 @@ async def send_whatsapp(
         return {"sent": False, "error": "No phone number"}
 
     try:
-        # Get business WhatsApp channel config
+        import os as _os
         channel_row = await db.pool.fetchrow(
-            """SELECT config, credentials FROM business_channels
-               WHERE business_id = $1 AND channel_type = 'whatsapp' AND status = 'active'
+            """SELECT instance_name, phone_number, webhook_secret
+               FROM business_channels
+               WHERE business_id = $1 AND channel_type = 'whatsapp'
+                 AND status IN ('connected', 'connecting', 'active')
                LIMIT 1""",
             business_id,
         )
@@ -163,9 +165,13 @@ async def send_whatsapp(
 
         from app.modules.channels.whatsapp import WhatsAppAdapter
 
-        config = channel_row["config"] if isinstance(channel_row["config"], dict) else json.loads(channel_row["config"] or "{}")
-        creds = channel_row["credentials"] if isinstance(channel_row["credentials"], dict) else json.loads(channel_row["credentials"] or "{}")
-        config.update(creds)
+        config = {
+            "api_url": _os.getenv("EVOLUTION_API_URL", ""),
+            "api_key": _os.getenv("EVOLUTION_API_KEY", ""),
+            "instance_name": channel_row["instance_name"],
+            "phone_number": channel_row["phone_number"],
+            "webhook_secret": channel_row["webhook_secret"],
+        }
 
         adapter = WhatsAppAdapter(business_id, config)
         message = _render_template(template_key, data)
@@ -407,7 +413,7 @@ async def _resolve_contact(
 
     elif target_type == "owner":
         row = await db.pool.fetchrow(
-            """SELECT u.id, u.email, u.phone
+            """SELECT u.id, u.email
                FROM users u
                JOIN businesses b ON b.owner_id = u.id
                WHERE b.id = $1""",
@@ -415,7 +421,7 @@ async def _resolve_contact(
         )
         if row:
             return {
-                "phone": row.get("phone"),
+                "phone": None,
                 "email": row["email"],
                 "user_id": str(row["id"]),
             }
