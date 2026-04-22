@@ -31,6 +31,6 @@
     {"kind": "regex_absent", "pattern": "pending.*approval"},
     {"kind": "regex_present", "pattern": "confirmad[oa]|confirmed"}
   ],
-  "judge_prompt": "Did the assistant tell the customer the booking is CONFIRMED, without saying anything like 'owner will confirm shortly' or 'pending approval'?",
+  "judge_prompt": "Did the assistant tell the customer the booking is CONFIRMED (using words like 'confirmada', 'confirmed', 'agendada')? IGNORE phrases like 'você receberá uma mensagem de confirmação por email/WhatsApp' — that's the system's automatic notification, not pending owner approval. Only fail if the assistant says things like 'owner will confirm shortly', 'pending owner approval', 'aguardando aprovação do proprietário', or 'seu pedido está em análise'.",
   "judge_threshold": 2
 }

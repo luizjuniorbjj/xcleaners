@@ -1143,6 +1143,29 @@ async def _propose_booking_draft(
             ),
         }
 
+    service_exists = await db.pool.fetchval(
+        "SELECT 1 FROM cleaning_services WHERE id = $1 AND business_id = $2 AND is_active = true",
+        params["service_id"], business_id,
+    )
+    if not service_exists:
+        catalog = await db.pool.fetch(
+            "SELECT id, name FROM cleaning_services WHERE business_id = $1 AND is_active = true ORDER BY name",
+            business_id,
+        )
+        catalog_hint = "; ".join(f"{r['name']}={r['id']}" for r in catalog)
+        logger.warning(
+            "[AI_TOOLS] propose_booking_draft REJECTED: service_id %s not found in business %s",
+            params["service_id"], business_id,
+        )
+        return {
+            "error": "service_not_found",
+            "message": (
+                f"service_id {params['service_id']} does not exist in this business. "
+                f"You MUST call get_services_catalog and use one of these EXACT UUIDs: "
+                f"{catalog_hint}. Do NOT invent UUIDs."
+            ),
+        }
+
     # CRITICAL fix (Smith verify 2026-04-20 C-1):
     # Dois gates de ownership antes de qualquer INSERT — sem isso a IA pode
     # ser manipulada via prompt injection pra criar drafts em nome de outro

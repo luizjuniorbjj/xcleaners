@@ -130,8 +130,17 @@ def _apply_check(check: dict, response_text: str, tool_calls: list) -> CheckResu
     return CheckResult(name=f"unknown:{kind}", passed=False, detail=f"unknown check kind: {kind}")
 
 
+JUDGE_MODEL = "gpt-4.1-mini"
+JUDGE_MODEL_FALLBACK = "gpt-4.1"
+
+
 async def _judge(judge_prompt: str, response_text: str, judge_threshold: int = 2) -> tuple[int, str]:
-    """LLM-as-judge soft check. Returns (score 0-3, rationale)."""
+    """LLM-as-judge soft check. Returns (score 0-3, rationale).
+
+    Uses gpt-4.1-mini as primary (matches prod scheduling model). If the judge
+    parses to score=0 with no clear rationale (often a sign the small model
+    misread the criterion), retries once with gpt-4.1 for higher precision.
+    """
     import os
     from openai import AsyncOpenAI
 
@@ -140,16 +149,20 @@ async def _judge(judge_prompt: str, response_text: str, judge_threshold: int = 2
         return 0, "OPENAI_API_KEY missing — judge skipped"
 
     system = (
-        "You are an evaluator. Read the AI assistant's reply and the criterion. "
+        "You are a strict evaluator. Read the criterion carefully — note any "
+        "explicit IGNORE / EXCEPT clauses — then judge the assistant's reply. "
         "Reply ONLY with a JSON object: "
-        '{"score": 0|1|2|3, "rationale": "<one sentence>"}. '
-        "Score guide: 3=perfectly satisfies criterion, 2=mostly, 1=partial, 0=fails."
+        '{"score": 0|1|2|3, "rationale": "<one sentence quoting the relevant '
+        'phrase from the reply>"}. '
+        "Score: 3=perfectly satisfies criterion, 2=mostly satisfies, "
+        "1=partially satisfies, 0=fails the criterion."
     )
-    user = f"CRITERION: {judge_prompt}\n\nASSISTANT REPLY:\n{response_text}"
-    try:
+    user = f"CRITERION:\n{judge_prompt}\n\nASSISTANT REPLY:\n{response_text}"
+
+    async def _call(model: str) -> tuple[int, str]:
         client = AsyncOpenAI(api_key=api_key)
         resp = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             temperature=0,
             response_format={"type": "json_object"},
@@ -158,6 +171,17 @@ async def _judge(judge_prompt: str, response_text: str, judge_threshold: int = 2
         body = resp.choices[0].message.content or "{}"
         data = json.loads(body)
         return int(data.get("score", 0)), str(data.get("rationale", ""))
+
+    try:
+        score, rationale = await _call(JUDGE_MODEL)
+        if score < judge_threshold:
+            try:
+                score2, rationale2 = await _call(JUDGE_MODEL_FALLBACK)
+                if score2 != score:
+                    return score2, f"[{JUDGE_MODEL_FALLBACK}] {rationale2}"
+            except Exception:
+                pass
+        return score, rationale
     except Exception as e:
         return 0, f"judge error: {e}"
 

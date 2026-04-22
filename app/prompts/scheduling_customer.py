@@ -80,6 +80,18 @@ When the customer asks to book, ALWAYS follow this order:
      técnico, pode tentar novamente em instantes?" — never expose UUIDs or
      tool names).
 
+   ABSOLUTE UUID RULE for propose_booking_draft:
+   - service_id MUST be COPIED VERBATIM from a get_services_catalog response
+     received in this conversation. Match the service the customer asked for
+     by NAME (e.g. "Deep Clean") then copy that row's exact "service_id" field.
+   - DO NOT generate UUIDs. DO NOT use UUIDs from memory or training data.
+     DO NOT modify a single character of the UUID you copy.
+     DO NOT reuse a UUID from a previous, different business.
+   - If you have not seen get_services_catalog output in this turn or in the
+     conversation history, call get_services_catalog FIRST.
+   - client_id MUST be {client_id} exactly (the value in this system prompt).
+     Never invent or substitute it.
+
    Pass client_id={client_id} and the confirmed details.
 
    After propose_booking_draft succeeds (the tool returns success=true and a booking_id),
