@@ -301,13 +301,15 @@ AI_TOOLS = [
     {
         "name": "propose_booking_draft",
         "description": (
-            "Create a booking in 'draft' status — AI proposal pending owner "
-            "approval. The draft carries the authoritative price snapshot and "
-            "appears in the owner's Pending tab. ONLY call after: "
+            "Create a CONFIRMED booking with status='scheduled'. Availability "
+            "is re-verified server-side before insert; if slot is free, booking "
+            "is auto-confirmed and notifications are sent to both customer and "
+            "owner (no manual approval needed). ONLY call after: "
             "(1) check_availability returns available=true, "
             "(2) get_price_quote returns an acceptable total, "
-            "(3) customer confirmed the booking details in conversation. "
-            "Returns the draft booking_id — tell the customer it's awaiting confirmation."
+            "(3) customer EXPLICITLY confirmed the booking in conversation. "
+            "Returns the booking_id — tell the customer the booking is CONFIRMED "
+            "and they will receive a confirmation message."
         ),
         "input_schema": {
             "type": "object",
@@ -1071,6 +1073,10 @@ async def _propose_booking_draft(
         }
 
     try:
+        # AUTO-CONFIRM: availability already verified above (gate at line ~1059).
+        # AI cria booking direto como "scheduled" (não draft). Owner não precisa
+        # aprovar — slot já está garantido + cliente já viu cotação e confirmou.
+        # Owner é notificado via send_notification (mesmo fluxo de bookings manuais).
         result = await create_booking_with_pricing(
             db,
             business_id=business_id,
@@ -1084,19 +1090,62 @@ async def _propose_booking_draft(
             frequency_id=params.get("frequency_id"),
             location_id=params.get("location_id"),
             source="ai_chat",
-            status="draft",
+            status="scheduled",
             special_instructions=params.get("special_instructions"),
         )
         breakdown = result["breakdown"]
+        booking_id = result["booking_id"]
+
+        # Notify both client and owner — best-effort, never block return.
+        try:
+            from app.modules.cleaning.services.notification_service import send_notification
+            notify_data = {
+                "booking_id": str(booking_id),
+                "scheduled_date": params["scheduled_date"],
+                "scheduled_start": params["scheduled_start"],
+                "duration_minutes": params.get("duration_minutes"),
+                "service_id": params["service_id"],
+                "tier": params.get("tier", "basic"),
+                "final_amount": float(breakdown["final_amount"]),
+                "source": "ai_chat",
+            }
+            # Client notification
+            await send_notification(
+                db=db,
+                business_id=business_id,
+                target_type="client",
+                target_id=params["client_id"],
+                template_key="booking_confirmation",
+                data=notify_data,
+            )
+            # Owner notification — find owner user_id of this business
+            owner_row = await db.pool.fetchrow(
+                """SELECT user_id FROM cleaning_user_roles
+                   WHERE business_id = $1 AND role = 'owner' AND is_active = true
+                   LIMIT 1""",
+                business_id,
+            )
+            if owner_row:
+                await send_notification(
+                    db=db,
+                    business_id=business_id,
+                    target_type="owner",
+                    target_id=str(owner_row["user_id"]),
+                    template_key="booking_confirmation",
+                    data=notify_data,
+                )
+        except Exception as e:
+            logger.warning("[AI_TOOLS] booking notification failed (booking still created): %s", e)
+
         return {
             "success": True,
-            "booking_id": result["booking_id"],
-            "status": "draft",
+            "booking_id": booking_id,
+            "status": "scheduled",
             "scheduled_date": params["scheduled_date"],
             "scheduled_start": params["scheduled_start"],
             "final_amount": float(breakdown["final_amount"]),
             "extras_count": result["extras_written"],
-            "message": "Draft created — pending owner approval.",
+            "message": "Booking confirmed and scheduled. Confirmation sent to customer and owner.",
         }
     except PricingConfigError as e:
         return {"error": "pricing_config", "message": str(e)}
