@@ -385,6 +385,33 @@ async def _process_incoming(slug: str, payload: dict):
     if not incoming:
         return  # ignored (fromMe, group, edit, reaction, etc.)
 
+    # Voice message → transcribe via Whisper, treat result as text from here on.
+    if getattr(incoming, "audio_url", None) and not incoming.text:
+        from app.modules.cleaning.services.transcription_service import transcribe_audio
+        audio_bytes = await adapter.download_audio(payload)
+        if not audio_bytes:
+            logger.warning("[WHATSAPP] Audio download failed for sender=%s", incoming.sender_id[:12])
+            try:
+                await adapter.send_message(
+                    incoming.sender_id,
+                    "I couldn't access your voice message. Could you send it as text or try again?",
+                )
+            except Exception:
+                pass
+            return
+        transcript = await transcribe_audio(audio_bytes, incoming.audio_mime)
+        if not transcript:
+            try:
+                await adapter.send_message(
+                    incoming.sender_id,
+                    "I couldn't understand the audio. Could you send it as text or try again?",
+                )
+            except Exception:
+                pass
+            return
+        incoming.text = transcript
+        logger.info("[WHATSAPP] Audio transcribed (%d chars): %s", len(transcript), transcript[:120])
+
     phone = _normalize_phone(incoming.sender_id)
     client = await _resolve_client(db, config["business_id"], phone)
 

@@ -97,6 +97,64 @@ class WhatsAppAdapter(ChannelAdapter):
             logger.error(f"[WHATSAPP] Send failed: {resp.status_code} {resp.text[:200]}")
         return False
 
+    async def download_audio(self, raw_payload: dict) -> Optional[bytes]:
+        """Download decrypted audio bytes for an incoming voice message.
+
+        Strategy:
+        1. Try Evolution's getBase64FromMediaMessage endpoint (always works for
+           audio/ptt messages — Evolution decrypts and re-encodes server-side).
+        2. Fallback to direct GET on the WA-CDN url if base64 endpoint refuses.
+
+        Returns audio bytes (typically OGG/Opus container) or None on failure.
+        """
+        if not self.api_url or not self.instance_name:
+            return None
+
+        data = raw_payload.get("data", {})
+        if not data:
+            return None
+
+        try:
+            resp = await self._request(
+                "POST",
+                f"/chat/getBase64FromMediaMessage/{self.instance_name}",
+                json={"message": data, "convertToMp4": False},
+                timeout=30,
+            )
+            if resp and resp.status_code in (200, 201):
+                body = resp.json()
+                b64 = body.get("base64") or body.get("data") or ""
+                if b64:
+                    import base64 as _b64
+                    return _b64.b64decode(b64)
+            elif resp:
+                logger.warning(
+                    "[WHATSAPP] getBase64 failed %s: %s",
+                    resp.status_code, resp.text[:200],
+                )
+        except Exception as e:
+            logger.warning("[WHATSAPP] getBase64 error: %s", e)
+
+        message = data.get("message", {})
+        audio_msg = message.get("audioMessage") or {}
+        media_url = data.get("mediaUrl") or audio_msg.get("url")
+        if not media_url:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(media_url)
+                if resp.status_code == 200:
+                    return resp.content
+                logger.warning(
+                    "[WHATSAPP] Direct audio download failed %s: %s",
+                    resp.status_code, resp.text[:200],
+                )
+        except Exception as e:
+            logger.warning("[WHATSAPP] Direct audio download error: %s", e)
+
+        return None
+
     async def send_typing(self, recipient_id: str, delay_ms: int = 3000):
         """Send composing presence via Evolution API (best-effort, silent on failure)."""
         if "@lid" in recipient_id:
