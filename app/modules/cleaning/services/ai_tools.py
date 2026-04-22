@@ -448,7 +448,7 @@ async def _get_schedule_for_date(
         FROM cleaning_bookings b
         LEFT JOIN cleaning_teams t ON t.id = b.team_id
         LEFT JOIN cleaning_client_schedules cs ON cs.id = b.client_id
-        LEFT JOIN cleaning_service_types st ON st.id = b.service_type_id
+        LEFT JOIN cleaning_services st ON st.id = b.service_id
         WHERE b.business_id = $1
           AND b.scheduled_date = $2::date
           AND b.status NOT IN ('cancelled')
@@ -587,7 +587,7 @@ async def _get_client_history(
             st.name AS service_type_name
         FROM cleaning_bookings b
         LEFT JOIN cleaning_teams t ON t.id = b.team_id
-        LEFT JOIN cleaning_service_types st ON st.id = b.service_type_id
+        LEFT JOIN cleaning_services st ON st.id = b.service_id
         WHERE b.client_id = $1 AND b.business_id = $2
         ORDER BY b.scheduled_date DESC
         LIMIT 20
