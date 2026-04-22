@@ -247,7 +247,12 @@ AI_TOOLS = [
             "Uses the server-side pricing engine (formula + override + extras "
             "+ frequency discount + tax). NEVER estimate prices yourself — "
             "always call this tool. The returned price is exactly what will "
-            "be charged if booked."
+            "be charged if booked. CRITICAL: pick the tier that matches the "
+            "service the customer asked for: 'Deep Clean'/'Limpeza Profunda' "
+            "-> tier='deep'; 'Standard'/'Basic'/'Limpeza Padrão' -> tier='basic'; "
+            "'Premium'/'Move-out'/'Move-in' -> tier='premium'. Mismatched tier "
+            "produces wrong price (e.g. Deep Clean quoted at basic tier under-prices "
+            "by ~45%)."
         ),
         "input_schema": {
             "type": "object",
@@ -259,7 +264,12 @@ AI_TOOLS = [
                 "tier": {
                     "type": "string",
                     "enum": ["basic", "deep", "premium"],
-                    "description": "Service tier. Default 'basic'.",
+                    "description": (
+                        "Service tier — MUST match the service category the customer asked for. "
+                        "'basic' = standard/regular clean. 'deep' = deep clean / limpeza profunda. "
+                        "'premium' = move-in/move-out / post-construction. NO default — picking "
+                        "wrong tier under-charges or over-charges the customer."
+                    ),
                 },
                 "extras": {
                     "type": "array",
