@@ -27,9 +27,11 @@ window.OwnerClientDetail = {
     container.innerHTML = '<div class="cc-loading">Loading client...</div>';
     await this._loadClient();
 
-    // Auto-open edit form when navigated with ?edit=1 in hash
-    // (used by Actions button in client list to skip extra click)
-    if (typeof window !== 'undefined' && window.location.hash.includes('edit=1') && this._client) {
+    // Auto-open edit form when navigated with ?edit=1 (used by Actions button
+    // in client list to skip extra click). Router strips hash to History API path,
+    // so ?edit=1 lands in window.location.search (not .hash) — check full URL.
+    if (typeof window !== 'undefined' && this._client &&
+        (window.location.search.includes('edit=1') || window.location.hash.includes('edit=1'))) {
       this._toggleEdit();
     }
   },
