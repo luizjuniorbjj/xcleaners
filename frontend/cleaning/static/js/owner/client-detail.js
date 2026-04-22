@@ -26,6 +26,12 @@ window.OwnerClientDetail = {
 
     container.innerHTML = '<div class="cc-loading">Loading client...</div>';
     await this._loadClient();
+
+    // Auto-open edit form when navigated with ?edit=1 in hash
+    // (used by Actions button in client list to skip extra click)
+    if (typeof window !== 'undefined' && window.location.hash.includes('edit=1') && this._client) {
+      this._toggleEdit();
+    }
   },
 
   async _loadClient() {

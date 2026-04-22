@@ -231,7 +231,7 @@ window.OwnerClientManager = {
         <td class="cc-text-sm">${c.last_service_date ? new Date(c.last_service_date).toLocaleDateString() : '--'}</td>
         <td><span class="cc-badge cc-badge-sm ${badgeClass}">${c.status}</span></td>
         <td style="text-align:center;" onclick="event.stopPropagation()">
-          <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="OwnerClientManager._goToDetail('${c.id}')" title="Edit client" style="padding:4px 8px;">
+          <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="OwnerClientManager._goToDetail('${c.id}', true)" title="Edit client" style="padding:4px 8px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
         </td>
@@ -274,7 +274,7 @@ window.OwnerClientManager = {
               </div>
               <div class="cc-client-card-actions" style="display:flex;flex-direction:column;align-items:flex-end;gap:var(--cc-space-2);">
                 <span class="cc-badge cc-badge-sm ${badgeClass}">${c.status}</span>
-                <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="event.stopPropagation();OwnerClientManager._goToDetail('${c.id}')" style="padding:4px 8px;font-size:11px;">Edit</button>
+                <button class="cc-btn cc-btn-xs cc-btn-outline" onclick="event.stopPropagation();OwnerClientManager._goToDetail('${c.id}', true)" style="padding:4px 8px;font-size:11px;">Edit</button>
               </div>
             </div>
           `;
@@ -336,8 +336,9 @@ window.OwnerClientManager = {
     this._loadAndRender();
   },
 
-  _goToDetail(clientId) {
-    window.location.hash = `#/owner/clients/${clientId}`;
+  _goToDetail(clientId, openEdit = false) {
+    const suffix = openEdit ? '?edit=1' : '';
+    window.location.hash = `#/owner/clients/${clientId}${suffix}`;
   },
 
   _toggleAll(checked) {
