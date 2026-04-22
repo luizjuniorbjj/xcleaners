@@ -402,7 +402,14 @@ AI_TOOLS = [
                 },
                 "service_id": {
                     "type": "string",
-                    "description": "UUID of cleaning_services.",
+                    "description": (
+                        "EXACT UUID returned by get_services_catalog (the 'service_id' "
+                        "field of the chosen service). MUST be a 36-char UUID "
+                        "like '06967aae-df41-4835-8900-29988711f393'. DO NOT pass "
+                        "a slug/name like 'deep_clean' or 'standard'. DO NOT pass "
+                        "the business_id. If you don't have the catalog yet, call "
+                        "get_services_catalog FIRST and copy the exact service_id."
+                    ),
                 },
                 "scheduled_date": {
                     "type": "string",
@@ -1100,6 +1107,42 @@ async def _propose_booking_draft(
     db: Database,
     auth_context: Optional[dict] = None,
 ) -> dict:
+    # Gate 0 — UUID validation. AI has been observed inventing service_ids
+    # (e.g. "deep_clean") or copying business_id by mistake. Catch that here
+    # and return a guidance message instead of an asyncpg type-error string.
+    import re as _re
+    _UUID_RE = _re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        _re.IGNORECASE,
+    )
+    for field in ("service_id", "client_id"):
+        val = params.get(field, "")
+        if not val or not _UUID_RE.match(str(val)):
+            logger.warning(
+                "[AI_TOOLS] propose_booking_draft REJECTED (bad %s): %r",
+                field, val,
+            )
+            return {
+                "error": f"invalid_{field}",
+                "message": (
+                    f"{field} must be the exact UUID from get_services_catalog "
+                    f"or the authenticated client's UUID. Got: {val!r}. "
+                    "Call get_services_catalog and copy the 'service_id' field."
+                ),
+            }
+    if str(params["service_id"]) == str(business_id):
+        logger.warning(
+            "[AI_TOOLS] propose_booking_draft REJECTED: service_id == business_id (%s)",
+            business_id,
+        )
+        return {
+            "error": "invalid_service_id",
+            "message": (
+                "service_id cannot equal business_id. service_id must be a UUID "
+                "from get_services_catalog (e.g. the Deep Clean or Standard Clean row)."
+            ),
+        }
+
     # CRITICAL fix (Smith verify 2026-04-20 C-1):
     # Dois gates de ownership antes de qualquer INSERT — sem isso a IA pode
     # ser manipulada via prompt injection pra criar drafts em nome de outro
