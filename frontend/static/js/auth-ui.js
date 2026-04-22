@@ -604,8 +604,10 @@ window.AuthUI = {
       `;
       return;
     }
-    // Escape token for safe embedding in the inline onsubmit handler.
-    const safeToken = JSON.stringify(String(token));
+    // NOTE: inline onsubmit="return AuthUI.handleResetPassword(event, JSON.stringify(token))"
+    // would close the HTML attribute prematurely (double quotes inside double-quoted
+    // attribute). Use addEventListener below after setting innerHTML instead, with the
+    // token captured by closure.
     container.innerHTML = `
       <div class="cc-auth-backdrop">
         <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
@@ -614,7 +616,7 @@ window.AuthUI = {
             <p class="cc-text-sm cc-text-muted">At least 8 characters, 1 uppercase, 1 number.</p>
           </div>
           <div class="cc-auth-error" id="auth-error" style="display:none;padding:var(--cc-space-3);border-radius:var(--cc-radius-md);background:var(--cc-danger-50);color:var(--cc-danger-600);font-size:var(--cc-text-sm);margin-bottom:var(--cc-space-4);border:1px solid var(--cc-danger-200);"></div>
-          <form onsubmit="return AuthUI.handleResetPassword(event, ${safeToken})">
+          <form id="reset-password-form">
             <div class="cc-form-group">
               <label class="cc-label" for="reset-password">New password</label>
               <div style="position:relative;">
@@ -668,6 +670,10 @@ window.AuthUI = {
     const pwdInput = document.getElementById('reset-password');
     if (pwdInput) {
       pwdInput.addEventListener('input', () => this._validatePassword(pwdInput.value));
+    }
+    const form = document.getElementById('reset-password-form');
+    if (form) {
+      form.addEventListener('submit', (ev) => AuthUI.handleResetPassword(ev, token));
     }
   },
 
