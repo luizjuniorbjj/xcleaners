@@ -6,6 +6,7 @@ window.CleanRouter = {
     '/login':            { module: null, roles: ['*'], title: 'Sign In' },
     '/register':         { module: null, roles: ['*'], title: 'Register' },
     '/register/invite':  { module: null, roles: ['*'], title: 'Accept Invitation' },
+    '/reset-password':   { module: null, roles: ['*'], title: 'Reset Password' },
     '/dashboard':        { module: 'owner/dashboard.js', roles: ['owner'], title: 'Dashboard' },
     '/schedule':         { module: 'owner/schedule-builder.js', roles: ['owner'], title: 'Schedule' },
     '/calendar':         { module: 'owner/schedule-builder.js', roles: ['owner'], title: 'Calendar' },
@@ -79,6 +80,11 @@ window.CleanRouter = {
     if (path===this._currentPath&&!this._isFirstLoad) return;
     this._isFirstLoad=false; this._currentPath=path;
     if (path==='/'||path==='') { this.navigate(this._userRole?this.getDefaultRoute():'/login'); return; }
+    if (path==='/reset-password') {
+      // Skip already-logged-in guard: user may click reset email link while
+      // holding a stale session in the same browser. Let them reset anyway.
+      this._renderAuthRoute(path,null); return;
+    }
     if (path==='/login'||path==='/register'||path.startsWith('/register/invite')) {
       if (this._userRole) { this.navigate(this.getDefaultRoute()); return; }
       const tk=path.startsWith('/register/invite/')?path.split('/')[3]:null;
@@ -106,7 +112,9 @@ window.CleanRouter = {
     document.getElementById('loading-screen').style.display='none';
     document.getElementById('main-layout').style.display='none';
     const c=document.getElementById('auth-container'); c.style.display='flex';
+    const resetToken=new URLSearchParams(window.location.search).get('token');
     if(path==='/register'||path.startsWith('/register/invite')) AuthUI.renderRegister(c,inviteToken);
+    else if(path==='/reset-password'||resetToken) AuthUI.renderResetPassword(c,resetToken||'');
     else AuthUI.renderLogin(c);
   },
 

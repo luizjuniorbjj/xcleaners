@@ -502,16 +502,212 @@ window.AuthUI = {
   },
 
   /**
-   * Show forgot password inline
+   * Show forgot password screen (replaces login in auth-container).
+   * Submit posts to /auth/password-reset; UI always shows success (anti-enumeration).
    */
   showForgotPassword(event) {
+    if (event) event.preventDefault();
+    const container = document.getElementById('auth-container');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="cc-auth-backdrop">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
+          <div style="text-align:center;margin-bottom:var(--cc-space-5);">
+            <h2 class="cc-text-2xl" style="color:var(--cc-primary-500);margin-bottom:var(--cc-space-1);">Reset password</h2>
+            <p class="cc-text-sm cc-text-muted">Enter your email and we'll send a reset link.</p>
+          </div>
+          <div class="cc-auth-error" id="auth-error" style="display:none;padding:var(--cc-space-3);border-radius:var(--cc-radius-md);background:var(--cc-danger-50);color:var(--cc-danger-600);font-size:var(--cc-text-sm);margin-bottom:var(--cc-space-4);border:1px solid var(--cc-danger-200);"></div>
+          <div class="cc-auth-success" id="auth-success" style="display:none;padding:var(--cc-space-3);border-radius:var(--cc-radius-md);background:var(--cc-success-50);color:var(--cc-success-600);font-size:var(--cc-text-sm);margin-bottom:var(--cc-space-4);border:1px solid var(--cc-success-200);"></div>
+          <form onsubmit="return AuthUI.handleForgotPassword(event)">
+            <div class="cc-form-group">
+              <label class="cc-label" for="forgot-email">Email</label>
+              <div style="position:relative;">
+                <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--cc-neutral-400);pointer-events:none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></svg>
+                </span>
+                <input type="email" id="forgot-email" class="cc-input" placeholder="you@email.com" required autocomplete="email" style="padding-left:36px;">
+              </div>
+            </div>
+            <button type="submit" class="cc-btn cc-btn-primary cc-btn-lg cc-btn-block" id="forgot-submit-btn" style="margin-top:var(--cc-space-2);">
+              Send reset link
+            </button>
+          </form>
+          <p style="text-align:center;margin-top:var(--cc-space-6);font-size:var(--cc-text-sm);color:var(--cc-neutral-500);">
+            <a href="/login" onclick="AuthUI._backToLogin(event)" style="color:var(--cc-primary-500);font-weight:var(--cc-font-medium);">← Back to sign in</a>
+          </p>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Submit forgot-password form. Backend returns 200 regardless of whether
+   * the email exists (anti-enumeration), so UI mirrors that: always success.
+   */
+  async handleForgotPassword(event) {
     event.preventDefault();
+    const email = document.getElementById('forgot-email').value.trim().toLowerCase();
     const errorEl = document.getElementById('auth-error');
-    errorEl.textContent = 'Password reset is not yet implemented. Contact support.';
-    errorEl.style.display = 'block';
-    errorEl.style.background = 'var(--cc-info-50)';
-    errorEl.style.color = 'var(--cc-info-600)';
-    errorEl.style.borderColor = 'var(--cc-info-200)';
+    const successEl = document.getElementById('auth-success');
+    const submitBtn = document.getElementById('forgot-submit-btn');
+    if (!email) return false;
+    errorEl.style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.classList.add('cc-btn-loading');
+    submitBtn.textContent = 'Sending...';
+    try {
+      await fetch(`${window.location.origin}/auth/password-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    } catch (_err) {
+      // Network error swallowed intentionally — do not leak failure modes.
+    }
+    successEl.textContent = 'If that email exists, you will receive reset instructions shortly.';
+    successEl.style.display = 'block';
+    submitBtn.textContent = 'Sent';
+    // Keep submit disabled to prevent spam retries.
+    return false;
+  },
+
+  /**
+   * Back-to-login shortcut used by inline links in reset screens.
+   */
+  _backToLogin(event) {
+    if (event) event.preventDefault();
+    // Strip any token/reset querystring before going back to login.
+    window.location.href = '/login';
+  },
+
+  /**
+   * Render the "choose new password" form after the user follows the email link.
+   * Called by router when path === '/reset-password' or ?token= is present.
+   */
+  renderResetPassword(container, token) {
+    if (!token) {
+      container.innerHTML = `
+        <div class="cc-auth-backdrop">
+          <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);text-align:center;">
+            <h2 class="cc-text-xl" style="color:var(--cc-danger-600);margin-bottom:var(--cc-space-2);">Invalid reset link</h2>
+            <p class="cc-text-sm cc-text-muted">This link is missing a token. Request a new reset link from the sign-in page.</p>
+            <a href="/login" onclick="AuthUI._backToLogin(event)" class="cc-btn cc-btn-primary cc-btn-block" style="margin-top:var(--cc-space-4);">Back to sign in</a>
+          </div>
+        </div>
+      `;
+      return;
+    }
+    // Escape token for safe embedding in the inline onsubmit handler.
+    const safeToken = JSON.stringify(String(token));
+    container.innerHTML = `
+      <div class="cc-auth-backdrop">
+        <div class="cc-card cc-auth-card" style="max-width:420px;width:100%;margin:auto;padding:var(--cc-space-6);">
+          <div style="text-align:center;margin-bottom:var(--cc-space-5);">
+            <h2 class="cc-text-2xl" style="color:var(--cc-primary-500);margin-bottom:var(--cc-space-1);">Choose a new password</h2>
+            <p class="cc-text-sm cc-text-muted">At least 8 characters, 1 uppercase, 1 number.</p>
+          </div>
+          <div class="cc-auth-error" id="auth-error" style="display:none;padding:var(--cc-space-3);border-radius:var(--cc-radius-md);background:var(--cc-danger-50);color:var(--cc-danger-600);font-size:var(--cc-text-sm);margin-bottom:var(--cc-space-4);border:1px solid var(--cc-danger-200);"></div>
+          <form onsubmit="return AuthUI.handleResetPassword(event, ${safeToken})">
+            <div class="cc-form-group">
+              <label class="cc-label" for="reset-password">New password</label>
+              <div style="position:relative;">
+                <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--cc-neutral-400);pointer-events:none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <input type="password" id="reset-password" class="cc-input" placeholder="New password" required minlength="8" autocomplete="new-password" style="padding-left:36px;padding-right:42px;">
+                <button type="button" class="cc-auth-toggle-pwd" onclick="AuthUI._togglePasswordVisibility('reset-password', this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;padding:4px 6px;cursor:pointer;color:var(--cc-neutral-400);display:flex;align-items:center;" title="Show password">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div style="margin-top:var(--cc-space-2);">
+                <div id="pwd-strength-bar" style="height:4px;border-radius:var(--cc-radius-full);background:var(--cc-neutral-200);overflow:hidden;">
+                  <div id="pwd-strength-fill" style="height:100%;width:0%;border-radius:var(--cc-radius-full);transition:width 0.3s ease, background 0.3s ease;"></div>
+                </div>
+                <div style="display:flex;gap:var(--cc-space-3);margin-top:var(--cc-space-2);flex-wrap:wrap;">
+                  <span id="req-length" class="cc-text-xs" style="color:var(--cc-neutral-400);display:flex;align-items:center;gap:4px;">
+                    <span class="cc-pwd-check-icon" style="display:inline-flex;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--cc-neutral-300);align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s ease;"></span>
+                    8+ chars
+                  </span>
+                  <span id="req-upper" class="cc-text-xs" style="color:var(--cc-neutral-400);display:flex;align-items:center;gap:4px;">
+                    <span class="cc-pwd-check-icon" style="display:inline-flex;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--cc-neutral-300);align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s ease;"></span>
+                    1 uppercase
+                  </span>
+                  <span id="req-number" class="cc-text-xs" style="color:var(--cc-neutral-400);display:flex;align-items:center;gap:4px;">
+                    <span class="cc-pwd-check-icon" style="display:inline-flex;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--cc-neutral-300);align-items:center;justify-content:center;flex-shrink:0;transition:all 0.2s ease;"></span>
+                    1 number
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="cc-form-group">
+              <label class="cc-label" for="reset-confirm">Confirm new password</label>
+              <div style="position:relative;">
+                <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--cc-neutral-400);pointer-events:none;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </span>
+                <input type="password" id="reset-confirm" class="cc-input" placeholder="Confirm new password" required autocomplete="new-password" style="padding-left:36px;">
+              </div>
+            </div>
+            <button type="submit" class="cc-btn cc-btn-primary cc-btn-lg cc-btn-block" id="reset-submit-btn" style="margin-top:var(--cc-space-2);">
+              Update password
+            </button>
+          </form>
+          <p style="text-align:center;margin-top:var(--cc-space-6);font-size:var(--cc-text-sm);color:var(--cc-neutral-500);">
+            <a href="/login" onclick="AuthUI._backToLogin(event)" style="color:var(--cc-primary-500);font-weight:var(--cc-font-medium);">← Back to sign in</a>
+          </p>
+        </div>
+      </div>
+    `;
+    const pwdInput = document.getElementById('reset-password');
+    if (pwdInput) {
+      pwdInput.addEventListener('input', () => this._validatePassword(pwdInput.value));
+    }
+  },
+
+  /**
+   * Submit the new-password form. Backend returns 400 on invalid/expired token.
+   * On success, redirect to /login?reset=success (history replace so back button
+   * doesn't return to the consumed reset form).
+   */
+  async handleResetPassword(event, token) {
+    event.preventDefault();
+    const password = document.getElementById('reset-password').value;
+    const confirm = document.getElementById('reset-confirm').value;
+    const errorEl = document.getElementById('auth-error');
+    const submitBtn = document.getElementById('reset-submit-btn');
+    errorEl.style.display = 'none';
+    if (password !== confirm) {
+      errorEl.textContent = 'Passwords do not match.';
+      errorEl.style.display = 'block';
+      return false;
+    }
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      errorEl.textContent = 'Password must be 8+ characters with 1 uppercase and 1 number.';
+      errorEl.style.display = 'block';
+      return false;
+    }
+    submitBtn.disabled = true;
+    submitBtn.classList.add('cc-btn-loading');
+    submitBtn.textContent = 'Updating...';
+    try {
+      const resp = await fetch(`${window.location.origin}/auth/password-reset/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, new_password: password }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.detail || 'Invalid or expired reset token. Please request a new link.');
+      }
+      window.location.replace('/login?reset=success');
+    } catch (err) {
+      errorEl.textContent = err.message || 'Password reset failed. Please try again.';
+      errorEl.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('cc-btn-loading');
+      submitBtn.textContent = 'Update password';
+    }
+    return false;
   },
 
   /**
