@@ -31,8 +31,8 @@ logger = logging.getLogger("xcleaners.ai_tools")
 async def _pick_available_team(
     db: Database,
     business_id: str,
-    scheduled_date: str,
-    scheduled_start: str,
+    scheduled_date,
+    scheduled_start,
     duration_minutes: Optional[int] = None,
     preferred_team_id: Optional[str] = None,
 ) -> Optional[str]:
@@ -41,7 +41,26 @@ async def _pick_available_team(
     Strategy: rank active teams by (preferred match, no slot conflict, least
     jobs today). Returns team UUID str, or None if no team fits — in which
     case the booking stays unassigned and the owner assigns it manually.
+
+    Accepts scheduled_date/start as either str ('YYYY-MM-DD' / 'HH:MM[:SS]')
+    or native date/time objects — coerces internally because asyncpg requires
+    native types regardless of SQL ::date / ::time casts.
     """
+    from datetime import date as _date, time as _time
+
+    if isinstance(scheduled_date, str):
+        sd = _date.fromisoformat(scheduled_date)
+    else:
+        sd = scheduled_date
+
+    if isinstance(scheduled_start, str):
+        s = scheduled_start
+        if len(s) == 5:
+            s += ":00"
+        ss = _time.fromisoformat(s)
+    else:
+        ss = scheduled_start
+
     duration_s = str(duration_minutes or 60)
     rows = await db.pool.fetch(
         """
@@ -50,13 +69,13 @@ async def _pick_available_team(
                COALESCE((
                    SELECT COUNT(*) FROM cleaning_bookings b
                    WHERE b.team_id = t.id
-                     AND b.scheduled_date = $2::date
+                     AND b.scheduled_date = $2
                      AND b.status NOT IN ('cancelled','no_show')
                ), 0) AS jobs_today,
                COALESCE((
                    SELECT COUNT(*) FROM cleaning_bookings b
                    WHERE b.team_id = t.id
-                     AND b.scheduled_date = $2::date
+                     AND b.scheduled_date = $2
                      AND b.status NOT IN ('cancelled','no_show')
                      AND b.scheduled_start < ($3::time + ($4 || ' minutes')::interval)
                      AND COALESCE(b.scheduled_end, b.scheduled_start + ($4 || ' minutes')::interval) > $3::time
@@ -69,8 +88,8 @@ async def _pick_available_team(
             t.name
         """,
         business_id,
-        scheduled_date,
-        scheduled_start,
+        sd,
+        ss,
         duration_s,
         preferred_team_id,
     )
