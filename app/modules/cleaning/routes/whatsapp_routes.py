@@ -162,6 +162,69 @@ async def _resolve_client(db: Database, business_id: str, phone: str) -> Optiona
     return dict(row) if row else None
 
 
+IDLE_WINDOW_MIN = 60  # mensagens dentro deste janela continuam mesma conversation
+HISTORY_TURNS = 8  # últimas N mensagens carregadas como contexto
+
+
+async def _get_or_create_conversation(db: Database, user_id: str) -> Optional[str]:
+    """Find recent open whatsapp conversation for user, or create new one.
+
+    Threading rule: same conversation if last_message_at within IDLE_WINDOW_MIN.
+    """
+    if not user_id:
+        return None
+    try:
+        row = await db.pool.fetchrow(
+            """
+            SELECT id FROM conversations
+            WHERE user_id = $1 AND channel = 'whatsapp' AND is_archived = FALSE
+              AND last_message_at > NOW() - ($2 || ' minutes')::interval
+            ORDER BY last_message_at DESC
+            LIMIT 1
+            """,
+            user_id, str(IDLE_WINDOW_MIN),
+        )
+        if row:
+            return str(row["id"])
+        new = await db.pool.fetchrow(
+            """INSERT INTO conversations (user_id, channel, last_message_at)
+               VALUES ($1, 'whatsapp', NOW()) RETURNING id""",
+            user_id,
+        )
+        return str(new["id"]) if new else None
+    except Exception as e:
+        logger.warning("[WHATSAPP] _get_or_create_conversation failed: %s", e)
+        return None
+
+
+async def _load_recent_history(db: Database, conversation_id: str, limit: int = HISTORY_TURNS) -> list:
+    """Load last N messages from conversation as [{role, content}, ...] list."""
+    if not conversation_id:
+        return []
+    try:
+        rows = await db.pool.fetch(
+            """SELECT role, content_encrypted FROM messages
+               WHERE conversation_id = $1
+               ORDER BY created_at DESC
+               LIMIT $2""",
+            conversation_id, limit,
+        )
+        # Reverse to chronological order, decode bytes → str (plain UTF-8 storage)
+        out = []
+        for row in reversed(rows):
+            content = row["content_encrypted"]
+            if isinstance(content, (bytes, bytearray)):
+                try:
+                    content = bytes(content).decode("utf-8", errors="replace")
+                except Exception:
+                    content = ""
+            out.append({"role": row["role"], "content": content or ""})
+        return out
+    except Exception as e:
+        logger.warning("[WHATSAPP] _load_recent_history failed: %s", e)
+        return []
+
+
 async def _run_ai_pipeline_whatsapp(
     db: Database,
     config: dict,
@@ -172,6 +235,10 @@ async def _run_ai_pipeline_whatsapp(
     Pipeline IA pra mensagem WhatsApp — duplicado MINIMAL do /ai/chat.
     Nao inclui moderation/rate_limit aqui pra simplificar (backlog: cross-channel
     rate limit via Redis). auth_context preservado pra enforcing Smith C-1.
+
+    HIGH-1.x followup: agora carrega histórico de mensagens da conversation
+    atual (idle-window 60min) e injeta como contexto pra AI manter memória entre
+    turnos (resolve bug "AI repete perguntas a cada mensagem").
     """
     from datetime import datetime
     try:
@@ -200,6 +267,26 @@ async def _run_ai_pipeline_whatsapp(
         today_local=today_local,
     )
 
+    # Load conversation history (idle-window threading) so AI mantém memória.
+    # client["user_id"] is set when client.user_id linked (homeowner registered).
+    user_id = client.get("user_id")
+    conversation_id = await _get_or_create_conversation(db, str(user_id)) if user_id else None
+    history = await _load_recent_history(db, conversation_id) if conversation_id else []
+
+    # Inject history into system prompt as plain conversation log.
+    # AI vê turns anteriores e não repete perguntas já respondidas.
+    if history:
+        history_text = "\n".join([
+            f"{m['role']}: {m['content']}" for m in history
+        ])
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"--- Conversa anterior (últimos {len(history)} turnos) ---\n"
+            f"{history_text}\n"
+            f"--- Fim da conversa anterior ---\n\n"
+            f"Use o contexto acima para manter coerência. NÃO repita perguntas já respondidas."
+        )
+
     # CRITICAL fix Smith C-1: enforcing ownership via auth_context.
     # Mesmo pattern do /ai/chat — bloqueia spoofing via prompt injection.
     auth_context = {"authenticated_client_id": str(client["id"])}
@@ -220,7 +307,8 @@ async def _run_ai_pipeline_whatsapp(
             ai_client, system_prompt, message_text, config["business_id"], db, provider, auth_context,
         )
 
-    return response_text
+    # Stash conversation_id for _persist_conversation to use (avoid re-lookup).
+    return response_text, conversation_id
 
 
 async def _persist_conversation(
@@ -228,30 +316,38 @@ async def _persist_conversation(
     user_id: Optional[str],
     user_message: str,
     assistant_message: str,
+    conversation_id: Optional[str] = None,
 ):
-    """
-    MVP: cria nova conversation por mensagem WhatsApp (channel='whatsapp').
-    Cross-message conversation threading fica no backlog (exige idle-window
-    lookup como em clawtobusiness BusinessChatService._get_recent_conversation).
+    """Persist user+assistant turn to messages table.
+
+    HIGH-1.x followup: conversation_id passed from pipeline (idle-window
+    threading), so all turns within 60min go to same conversation row.
+    Falls back to creating new conversation if conversation_id missing.
+
+    content stored as plain UTF-8 bytes (not Fernet) for fast load in
+    _load_recent_history. Schema column is BYTEA so encoding works.
     """
     if not user_id:
         return  # no linked user — cliente anonimo sem conversation persistente
     try:
-        conv = await db.pool.fetchrow(
-            """
-            INSERT INTO conversations (user_id, channel, last_message_at)
-            VALUES ($1, 'whatsapp', NOW())
-            RETURNING id
-            """,
-            user_id,
-        )
-        if conv:
+        conv_id = conversation_id
+        if not conv_id:
+            conv = await db.pool.fetchrow(
+                """INSERT INTO conversations (user_id, channel, last_message_at)
+                   VALUES ($1, 'whatsapp', NOW()) RETURNING id""",
+                user_id,
+            )
+            conv_id = str(conv["id"]) if conv else None
+        if conv_id:
+            # Bump last_message_at so threading window keeps fresh
             await db.pool.execute(
-                """
-                INSERT INTO messages (conversation_id, role, content_encrypted)
-                VALUES ($1, 'user', $2), ($1, 'assistant', $3)
-                """,
-                conv["id"],
+                "UPDATE conversations SET last_message_at = NOW() WHERE id = $1",
+                conv_id,
+            )
+            await db.pool.execute(
+                """INSERT INTO messages (conversation_id, role, content_encrypted)
+                   VALUES ($1, 'user', $2), ($1, 'assistant', $3)""",
+                conv_id,
                 user_message.encode("utf-8"),
                 assistant_message.encode("utf-8"),
             )
@@ -371,9 +467,9 @@ async def _process_incoming(slug: str, payload: dict):
         )
         return
 
-    # Pipeline IA
+    # Pipeline IA (returns response_text + conversation_id for thread persist)
     try:
-        response_text = await _run_ai_pipeline_whatsapp(
+        response_text, conversation_id = await _run_ai_pipeline_whatsapp(
             db, config, client, incoming.text,
         )
     except Exception as e:
@@ -388,8 +484,8 @@ async def _process_incoming(slug: str, payload: dict):
             pass
         return
 
-    # Persist conversation (best-effort)
-    await _persist_conversation(db, client.get("user_id"), incoming.text, response_text)
+    # Persist conversation turn (reuses conversation_id from pipeline — keeps thread)
+    await _persist_conversation(db, client.get("user_id"), incoming.text, response_text, conversation_id)
 
     # Send response
     try:
