@@ -458,8 +458,14 @@ window.Xcleaners = {
     const loadingScreen = document.getElementById('loading-screen');
     loadingScreen.style.display = 'none';
 
-    // Navigate to login hash
-    if (window.location.pathname !== '/login' && window.location.pathname !== '/register' && !window.location.pathname.startsWith('#/register/invite/')) {
+    // Navigate to login hash (but keep /reset-password standalone so users
+    // arriving from a reset email land on the new-password form).
+    if (
+      window.location.pathname !== '/login' &&
+      window.location.pathname !== '/register' &&
+      window.location.pathname !== '/reset-password' &&
+      !window.location.pathname.startsWith('#/register/invite/')
+    ) {
       window.CleanRouter.navigate('/login');
     }
 
@@ -473,6 +479,9 @@ window.Xcleaners = {
         ? window.location.pathname.split('#/register/invite/')[1]
         : null;
       AuthUI.renderRegister(authContainer, inviteToken);
+    } else if (window.location.pathname === '/reset-password') {
+      const resetToken = new URLSearchParams(window.location.search).get('token') || '';
+      AuthUI.renderResetPassword(authContainer, resetToken);
     } else {
       AuthUI.renderLogin(authContainer);
     }
