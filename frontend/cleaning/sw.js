@@ -10,7 +10,12 @@
  *   - CDN libs: Cache First
  */
 
-const CACHE_VERSION = 'xcleaners-v28';
+// Bumped v28 → v29 on 2026-04-22: password reset Wave fixes (auth-ui + router + app.js).
+// Old SW clients cached stale auth-ui.js?v=17 / router.js?v=14 / app.js?v=14 which predate
+// the showForgotPassword implementation, /reset-password route handling, and the
+// addEventListener submit fix. Activate handler below deletes any cache key starting with
+// `xcleaners-v28-` (and older), so a single new SW fetch forces a clean state for all clients.
+const CACHE_VERSION = 'xcleaners-v29';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;
@@ -26,9 +31,9 @@ const SHELL_ASSETS = [
   '/cleaning/static/js/shared/sse-client.js?v=12',
   '/cleaning/static/js/shared/offline-store.js?v=11',
   '/cleaning/static/js/shared/i18n.js?v=11',
-  '/cleaning/static/js/auth-ui.js?v=17',
-  '/cleaning/static/js/router.js?v=14',
-  '/cleaning/static/js/app.js?v=14',
+  '/cleaning/static/js/auth-ui.js?v=19-pwreset-fix',
+  '/cleaning/static/js/router.js?v=19-pwreset',
+  '/cleaning/static/js/app.js?v=15-pwreset',
   '/cleaning/static/vendor/fullcalendar.min.js',
   '/cleaning/static/icons/icon-192.png',
 ];
