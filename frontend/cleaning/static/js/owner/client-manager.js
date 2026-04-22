@@ -338,7 +338,13 @@ window.OwnerClientManager = {
 
   _goToDetail(clientId, openEdit = false) {
     const suffix = openEdit ? '?edit=1' : '';
-    window.location.hash = `#/owner/clients/${clientId}${suffix}`;
+    const target = `/clients/${clientId}${suffix}`;
+    if (typeof CleanRouter !== 'undefined' && CleanRouter.navigate) {
+      CleanRouter.navigate(target);
+    } else {
+      // Fallback (shouldn't happen — router always loaded before module)
+      window.location.hash = `#/owner/clients/${clientId}${suffix}`;
+    }
   },
 
   _toggleAll(checked) {
